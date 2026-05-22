@@ -2,8 +2,9 @@ export function cn(...classes) {
   return classes.filter(Boolean).join(' ')
 }
 
-export function formatCurrency(amount) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
+export function formatCurrency(amount, currency = 'INR') {
+  const locale = currency === 'INR' ? 'en-IN' : 'en-US'
+  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount)
 }
 
 export function formatDate(dateStr) {

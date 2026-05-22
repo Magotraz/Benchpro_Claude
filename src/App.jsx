@@ -17,6 +17,9 @@ import Candidates  from './pages/Candidates'
 import Submissions from './pages/Submissions'
 import Quotations  from './pages/Quotations'
 
+// Pipeline page
+import Pipeline from './pages/Pipeline'
+
 // Admin pages (super_recruiter only)
 import AdminPanel  from './pages/admin/AdminPanel'
 import Overview    from './pages/admin/Overview'
@@ -56,6 +59,7 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="pipeline"    element={<Pipeline />} />
           <Route path="submissions" element={<Submissions />} />
           <Route path="quotations"  element={<Quotations />} />
 
