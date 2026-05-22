@@ -1,6 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 
-export const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-)
+// .trim() strips any \r, \n or stray whitespace that CRLF line endings
+// or editor tooling can embed into the substituted string literal,
+// which would otherwise cause a fetch "non ISO-8859-1 characters" header error.
+const supabaseUrl     = (import.meta.env.VITE_SUPABASE_URL     ?? '').trim()
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim()
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
