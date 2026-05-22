@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Briefcase, Users, FileText, ReceiptText,
   ChevronRight, LogOut, ShieldCheck,
@@ -40,8 +40,10 @@ function initials(name) {
 
 export default function Sidebar() {
   const { profile, role, signOut } = useAuth()
-  const navigate = useNavigate()
-  const navItems = navForRole(role)
+  const navigate  = useNavigate()
+  const location  = useLocation()
+  const navItems  = navForRole(role)
+  const adminActive = location.pathname.startsWith('/admin')
 
   async function handleSignOut() {
     await signOut()
@@ -84,17 +86,25 @@ export default function Sidebar() {
             )}
           </NavLink>
         ))}
-      </nav>
 
-      {/* Role badge for super_recruiter */}
-      {role === 'super_recruiter' && (
-        <div className="px-4 pb-2">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/20 rounded-lg">
-            <ShieldCheck size={14} className="text-amber-300" />
-            <span className="text-xs font-medium text-amber-300">Super Recruiter</span>
+        {role === 'super_recruiter' && (
+          <div className="pt-3 mt-3 border-t border-white/10">
+            <p className="px-3 mb-1 text-xs font-semibold text-indigo-400 uppercase tracking-wider">Admin</p>
+            <NavLink
+              to="/admin/overview"
+              className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                adminActive
+                  ? 'bg-amber-500/30 text-amber-200'
+                  : 'text-indigo-200 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <ShieldCheck size={18} className="shrink-0" />
+              <span className="flex-1">Admin Panel</span>
+              {adminActive && <ChevronRight size={14} className="opacity-70" />}
+            </NavLink>
           </div>
-        </div>
-      )}
+        )}
+      </nav>
 
       {/* User footer */}
       <div className="px-4 py-4 border-t border-white/10 space-y-2">
