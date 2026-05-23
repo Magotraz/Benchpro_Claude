@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider } from './contexts/AuthContext'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 
@@ -10,15 +10,19 @@ import AcceptInvite    from './pages/auth/AcceptInvite'
 import DemoRequest     from './pages/auth/DemoRequest'
 import VerifyEmail     from './pages/auth/VerifyEmail'
 
-// App pages
+// Recruiter/admin pages
 import Dashboard   from './pages/Dashboard'
 import Jobs        from './pages/Jobs'
 import Candidates  from './pages/Candidates'
 import Submissions from './pages/Submissions'
 import Quotations  from './pages/Quotations'
+import Pipeline    from './pages/Pipeline'
 
-// Pipeline page
-import Pipeline from './pages/Pipeline'
+// Client portal pages
+import ClientDashboard   from './pages/client/ClientDashboard'
+import ClientJobs        from './pages/client/ClientJobs'
+import ClientSubmissions from './pages/client/ClientSubmissions'
+import ClientQuotations  from './pages/client/ClientQuotations'
 
 // Admin pages (super_recruiter only)
 import AdminPanel  from './pages/admin/AdminPanel'
@@ -27,6 +31,11 @@ import Recruiters  from './pages/admin/Recruiters'
 import Clients     from './pages/admin/Clients'
 import Invites     from './pages/admin/Invites'
 import Analytics   from './pages/admin/Analytics'
+
+function ByRole({ client: clientEl, recruiter: recruiterEl }) {
+  const { role } = useAuth()
+  return role === 'client' ? clientEl : recruiterEl
+}
 
 export default function App() {
   return (
@@ -49,8 +58,12 @@ export default function App() {
           }
         >
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard"   element={<Dashboard />} />
-          <Route path="jobs"        element={<Jobs />} />
+
+          <Route path="dashboard"   element={<ByRole client={<ClientDashboard />}   recruiter={<Dashboard />} />} />
+          <Route path="jobs"        element={<ByRole client={<ClientJobs />}        recruiter={<Jobs />} />} />
+          <Route path="submissions" element={<ByRole client={<ClientSubmissions />} recruiter={<Submissions />} />} />
+          <Route path="quotations"  element={<ByRole client={<ClientQuotations />}  recruiter={<Quotations />} />} />
+
           <Route
             path="candidates"
             element={
@@ -59,9 +72,14 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="pipeline"    element={<Pipeline />} />
-          <Route path="submissions" element={<Submissions />} />
-          <Route path="quotations"  element={<Quotations />} />
+          <Route
+            path="pipeline"
+            element={
+              <ProtectedRoute allowedRoles={['super_recruiter', 'recruiter']}>
+                <Pipeline />
+              </ProtectedRoute>
+            }
+          />
 
           {/* ── Admin routes (super_recruiter only) ────────────── */}
           <Route
