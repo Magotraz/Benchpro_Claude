@@ -1,7 +1,16 @@
 -- ============================================================
--- BenchPro — Seed Data v1.0
+-- BenchPro — Seed Data v1.1
 -- Run in: Supabase Dashboard → SQL Editor
 -- Safe to re-run: deletes existing seed records first
+--
+-- STEP 1 — Create auth users BEFORE running this script.
+--   Supabase blocks INSERT INTO auth.users via SQL.
+--   Go to Authentication → Add User for each account below,
+--   setting the UUID manually via the Admin API or CLI.
+--   See Section 1 in this file for the full UUID → email table.
+--
+-- STEP 2 — Run this script. Profiles use ON CONFLICT (id) DO NOTHING
+--   so re-runs never fail on existing rows.
 -- ============================================================
 --
 -- TEST ACCOUNTS (password: BenchPro@2026)
@@ -87,115 +96,30 @@ DELETE FROM profiles WHERE id IN (
   '00000000-0000-cafe-0007-000000000000'
 );
 
-DELETE FROM auth.identities WHERE user_id IN (
-  '00000000-0000-cafe-0001-000000000000','00000000-0000-cafe-0002-000000000000',
-  '00000000-0000-cafe-0003-000000000000','00000000-0000-cafe-0004-000000000000',
-  '00000000-0000-cafe-0005-000000000000','00000000-0000-cafe-0006-000000000000',
-  '00000000-0000-cafe-0007-000000000000'
-);
-
-DELETE FROM auth.users WHERE id IN (
-  '00000000-0000-cafe-0001-000000000000','00000000-0000-cafe-0002-000000000000',
-  '00000000-0000-cafe-0003-000000000000','00000000-0000-cafe-0004-000000000000',
-  '00000000-0000-cafe-0005-000000000000','00000000-0000-cafe-0006-000000000000',
-  '00000000-0000-cafe-0007-000000000000'
-);
+-- NOTE: auth.users and auth.identities are managed by Supabase GoTrue.
+-- Create the 7 test accounts manually in Supabase Dashboard → Authentication → Users
+-- (or via the Admin API) using the emails and UUIDs listed at the top of this file.
 
 -- ────────────────────────────────────────────────────────────
--- 1.  AUTH USERS  (7 accounts, all password: BenchPro@2026)
+-- 1.  CREATE AUTH USERS FIRST (outside this script)
 -- ────────────────────────────────────────────────────────────
-
-INSERT INTO auth.users (
-  instance_id, id, aud, role, email, encrypted_password,
-  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
-  created_at, updated_at, is_super_admin, is_sso_user,
-  confirmation_token, recovery_token, email_change_token_new, email_change
-) VALUES
-  -- u1: Recruiter (primary test account)
-  ('00000000-0000-0000-0000-000000000000',
-   '00000000-0000-cafe-0001-000000000000',
-   'authenticated', 'authenticated', 'recruiter@benchpro.in',
-   crypt('BenchPro@2026', gen_salt('bf')),
-   NOW(), '{"provider":"email","providers":["email"]}', '{}',
-   NOW() - INTERVAL '60 days', NOW(), false, false, '', '', '', ''),
-
-  -- u2: Client (primary test account)
-  ('00000000-0000-0000-0000-000000000000',
-   '00000000-0000-cafe-0002-000000000000',
-   'authenticated', 'authenticated', 'client@benchpro.in',
-   crypt('BenchPro@2026', gen_salt('bf')),
-   NOW(), '{"provider":"email","providers":["email"]}', '{}',
-   NOW() - INTERVAL '55 days', NOW(), false, false, '', '', '', ''),
-
-  -- u3: TechCorp India
-  ('00000000-0000-0000-0000-000000000000',
-   '00000000-0000-cafe-0003-000000000000',
-   'authenticated', 'authenticated', 'techcorp@benchpro.in',
-   crypt('BenchPro@2026', gen_salt('bf')),
-   NOW(), '{"provider":"email","providers":["email"]}', '{}',
-   NOW() - INTERVAL '50 days', NOW(), false, false, '', '', '', ''),
-
-  -- u4: Acme Ltd
-  ('00000000-0000-0000-0000-000000000000',
-   '00000000-0000-cafe-0004-000000000000',
-   'authenticated', 'authenticated', 'acme@benchpro.in',
-   crypt('BenchPro@2026', gen_salt('bf')),
-   NOW(), '{"provider":"email","providers":["email"]}', '{}',
-   NOW() - INTERVAL '48 days', NOW(), false, false, '', '', '', ''),
-
-  -- u5: StartupXYZ
-  ('00000000-0000-0000-0000-000000000000',
-   '00000000-0000-cafe-0005-000000000000',
-   'authenticated', 'authenticated', 'startup@benchpro.in',
-   crypt('BenchPro@2026', gen_salt('bf')),
-   NOW(), '{"provider":"email","providers":["email"]}', '{}',
-   NOW() - INTERVAL '45 days', NOW(), false, false, '', '', '', ''),
-
-  -- u6: DataViz Corp
-  ('00000000-0000-0000-0000-000000000000',
-   '00000000-0000-cafe-0006-000000000000',
-   'authenticated', 'authenticated', 'dataviz@benchpro.in',
-   crypt('BenchPro@2026', gen_salt('bf')),
-   NOW(), '{"provider":"email","providers":["email"]}', '{}',
-   NOW() - INTERVAL '42 days', NOW(), false, false, '', '', '', ''),
-
-  -- u7: FinTech Solutions  (= client@benchpro.in's company in the portal)
-  ('00000000-0000-0000-0000-000000000000',
-   '00000000-0000-cafe-0007-000000000000',
-   'authenticated', 'authenticated', 'fintech@benchpro.in',
-   crypt('BenchPro@2026', gen_salt('bf')),
-   NOW(), '{"provider":"email","providers":["email"]}', '{}',
-   NOW() - INTERVAL '40 days', NOW(), false, false, '', '', '', '');
-
+-- Supabase blocks direct INSERT INTO auth.users via SQL.
+-- Create all 7 accounts in Supabase Dashboard → Authentication → Add User
+-- (or use the Admin API / supabase-js admin.createUser).
+-- IMPORTANT: set each user's UUID to match the values below so the
+-- profiles and FK references in this seed file align correctly.
+--
+--  UUID                                   Email                    Role
+--  00000000-0000-cafe-0001-000000000000   recruiter@benchpro.in   recruiter
+--  00000000-0000-cafe-0002-000000000000   client@benchpro.in      client
+--  00000000-0000-cafe-0003-000000000000   techcorp@benchpro.in    client
+--  00000000-0000-cafe-0004-000000000000   acme@benchpro.in        client
+--  00000000-0000-cafe-0005-000000000000   startup@benchpro.in     client
+--  00000000-0000-cafe-0006-000000000000   dataviz@benchpro.in     client
+--  00000000-0000-cafe-0007-000000000000   fintech@benchpro.in     client
+--
+-- Password for all accounts: BenchPro@2026
 -- ────────────────────────────────────────────────────────────
--- 2.  AUTH IDENTITIES
--- ────────────────────────────────────────────────────────────
-
-INSERT INTO auth.identities (
-  id, provider_id, user_id, identity_data, provider,
-  last_sign_in_at, created_at, updated_at
-) VALUES
-  (gen_random_uuid(), 'recruiter@benchpro.in', '00000000-0000-cafe-0001-000000000000',
-   '{"sub":"00000000-0000-cafe-0001-000000000000","email":"recruiter@benchpro.in"}',
-   'email', NOW(), NOW(), NOW()),
-  (gen_random_uuid(), 'client@benchpro.in', '00000000-0000-cafe-0002-000000000000',
-   '{"sub":"00000000-0000-cafe-0002-000000000000","email":"client@benchpro.in"}',
-   'email', NOW(), NOW(), NOW()),
-  (gen_random_uuid(), 'techcorp@benchpro.in', '00000000-0000-cafe-0003-000000000000',
-   '{"sub":"00000000-0000-cafe-0003-000000000000","email":"techcorp@benchpro.in"}',
-   'email', NOW(), NOW(), NOW()),
-  (gen_random_uuid(), 'acme@benchpro.in', '00000000-0000-cafe-0004-000000000000',
-   '{"sub":"00000000-0000-cafe-0004-000000000000","email":"acme@benchpro.in"}',
-   'email', NOW(), NOW(), NOW()),
-  (gen_random_uuid(), 'startup@benchpro.in', '00000000-0000-cafe-0005-000000000000',
-   '{"sub":"00000000-0000-cafe-0005-000000000000","email":"startup@benchpro.in"}',
-   'email', NOW(), NOW(), NOW()),
-  (gen_random_uuid(), 'dataviz@benchpro.in', '00000000-0000-cafe-0006-000000000000',
-   '{"sub":"00000000-0000-cafe-0006-000000000000","email":"dataviz@benchpro.in"}',
-   'email', NOW(), NOW(), NOW()),
-  (gen_random_uuid(), 'fintech@benchpro.in', '00000000-0000-cafe-0007-000000000000',
-   '{"sub":"00000000-0000-cafe-0007-000000000000","email":"fintech@benchpro.in"}',
-   'email', NOW(), NOW(), NOW());
 
 -- ────────────────────────────────────────────────────────────
 -- 3.  PROFILES
@@ -228,7 +152,8 @@ INSERT INTO profiles (id, email, full_name, role, is_active, created_at) VALUES
 
   -- u7: FinTech Solutions
   ('00000000-0000-cafe-0007-000000000000', 'fintech@benchpro.in',
-   'FinTech Solutions', 'client', true, NOW() - INTERVAL '40 days');
+   'FinTech Solutions', 'client', true, NOW() - INTERVAL '40 days')
+ON CONFLICT (id) DO NOTHING;
 
 -- ────────────────────────────────────────────────────────────
 -- 4.  JOBS  (10 open positions across 5 companies)
