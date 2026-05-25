@@ -1,6 +1,7 @@
 import { useLocation } from 'react-router-dom'
-import { Bell, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+import NotificationBell from './NotificationBell'
 
 const pageTitles = {
   '/dashboard':   'Dashboard',
@@ -34,10 +35,7 @@ export default function TopBar() {
             className="pl-9 pr-4 py-2 text-sm bg-gray-100 border border-transparent rounded-lg focus:outline-none focus:border-brand-500 focus:bg-white transition-colors w-52"
           />
         </div>
-        <button className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
-          <Bell size={18} />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-500 rounded-full" />
-        </button>
+        <NotificationBell />
       </div>
     </header>
   )

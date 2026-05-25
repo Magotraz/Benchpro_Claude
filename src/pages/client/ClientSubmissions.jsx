@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { createNotification } from '../../lib/notifications'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ function avatarColor(id) { return BG_COLORS[(id?.charCodeAt(0) ?? 0) % BG_COLORS
 
 // ─── Feedback form ────────────────────────────────────────────────────────────
 
-function FeedbackForm({ submissionId, existing, onSaved }) {
+function FeedbackForm({ submissionId, existing, onSaved, recruiterId, candidateName }) {
   const { user } = useAuth()
   const [verdict, setVerdict] = useState(existing?.verdict ?? '')
   const [notes, setNotes]     = useState(existing?.notes ?? '')
@@ -69,6 +70,13 @@ function FeedbackForm({ submissionId, existing, onSaved }) {
     await supabase.from('client_feedback').upsert(
       { submission_id: submissionId, client_id: user.id, verdict, notes, updated_at: new Date().toISOString() },
       { onConflict: 'submission_id,client_id' }
+    )
+    createNotification(
+      recruiterId,
+      'client_feedback',
+      'Client submitted feedback',
+      `${candidateName ?? 'A candidate'} was marked as "${verdict}"`,
+      '/pipeline',
     )
     onSaved({ verdict, notes })
     setSaving(false)
@@ -197,6 +205,8 @@ function CandidateCard({ submission, feedback, onFeedbackSaved }) {
             submissionId={submission.id}
             existing={feedback}
             onSaved={(fb) => { onFeedbackSaved(submission.id, fb); setOpen(false) }}
+            recruiterId={submission.submitted_by}
+            candidateName={c?.full_name}
           />
         )}
       </div>

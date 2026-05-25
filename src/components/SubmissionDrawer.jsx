@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Mail, Phone, MapPin, Briefcase, Linkedin, MessageSquare, ChevronRight, Clock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { createNotification } from '../lib/notifications'
 
 const STAGES = [
   { id: 'sourced',    label: 'Sourced',    color: 'bg-gray-100 text-gray-600 border-gray-200' },
@@ -71,6 +72,13 @@ export default function SubmissionDrawer({ submission, onClose, onStageChange })
     })
     await loadNotes()
     onStageChange(submission.id, newStage)
+    createNotification(
+      submission.submitted_by,
+      'stage_change',
+      'Pipeline stage updated',
+      `${candidate?.full_name ?? 'Candidate'} moved to ${stageLabel(newStage)}`,
+      `/pipeline?job=${submission.job_id}`,
+    )
     setMoving(false)
   }
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Plus, ReceiptText, TrendingUp, IndianRupee } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { createNotification } from '../lib/notifications'
 import { formatCurrency } from '../lib/utils'
 import Modal from '../components/Modal'
 
@@ -98,6 +99,15 @@ export default function Quotations() {
     await supabase.from('quotations').update({ status: next, updated_at: new Date().toISOString() }).eq('id', q.id)
     setQuotes(prev => prev.map(x => x.id === q.id ? { ...x, status: next } : x))
     setAdvancing(null)
+
+    const title = 'Quotation status updated'
+    const body  = `${q.quote_number} moved to ${STATUS_LABELS[next]}`
+    createNotification(q.created_by, 'quotation_status', title, body, '/quotations')
+    supabase.from('profiles').select('id').eq('role', 'super_recruiter').then(({ data }) => {
+      for (const p of data ?? []) {
+        if (p.id !== q.created_by) createNotification(p.id, 'quotation_status', title, body, '/quotations')
+      }
+    })
   }
 
   const approvedRevenue = quotes

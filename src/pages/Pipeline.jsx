@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { createNotification } from '../lib/notifications'
 import Modal from '../components/Modal'
 import SubmissionDrawer from '../components/SubmissionDrawer'
 
@@ -377,6 +378,14 @@ export default function Pipeline() {
       content: `Stage changed from ${stageName(oldStage)} to ${stageName(newStage)}`,
       type: 'stage_change', meta: { from: oldStage, to: newStage },
     })
+    const sub = submissions.find(s => s.id === subId) ?? allSubmissions.find(s => s.id === subId)
+    createNotification(
+      sub?.submitted_by,
+      'stage_change',
+      'Pipeline stage updated',
+      `${sub?.candidates?.full_name ?? 'Candidate'} moved to ${stageName(newStage)}`,
+      `/pipeline?job=${sub?.job_id ?? selectedJobId}`,
+    )
   }
 
   function stageName(id) { return STAGES.find(s => s.id === id)?.label ?? id }
@@ -394,6 +403,13 @@ export default function Pipeline() {
     if (error) { setAddError(error.message); setAdding(false); return }
     setSubmissions(prev => [...prev, data])
     setAllSubmissions(prev => [data, ...prev])
+    createNotification(
+      user.id,
+      'new_submission',
+      'Candidate added to pipeline',
+      `${data.candidates?.full_name ?? 'Candidate'} added to ${selectedJob?.title ?? 'job'}`,
+      `/pipeline?job=${selectedJobId}`,
+    )
     setAddModal(false)
     setAddForm({ candidate_id: '' })
     setAdding(false)
