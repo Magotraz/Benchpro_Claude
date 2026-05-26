@@ -62,7 +62,7 @@ export default function Login() {
           <h2 className="text-2xl font-bold text-gray-800">Sign in to your account</h2>
           <p className="mt-1 text-gray-500 text-sm">
             New candidate?{' '}
-            <Link to="/signup" className="text-brand-600 hover:underline font-medium">Create an account</Link>
+            <Link to="/register" className="text-brand-600 hover:underline font-medium">Register here</Link>
           </p>
 
           {error && (
