@@ -1,7 +1,7 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Briefcase, Users, FileText, ReceiptText,
-  ChevronRight, LogOut, ShieldCheck, LayoutGrid,
+  ChevronRight, LogOut, ShieldCheck, LayoutGrid, CalendarDays,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { ROLE_LABELS } from '../lib/auth'
@@ -10,6 +10,7 @@ const recruiterNav = [
   { to: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
   { to: '/jobs',        label: 'Jobs',          icon: Briefcase },
   { to: '/pipeline',    label: 'Pipeline',      icon: LayoutGrid },
+  { to: '/interviews',  label: 'Interviews',    icon: CalendarDays },
   { to: '/candidates',  label: 'Candidates',    icon: Users },
   { to: '/submissions', label: 'Submissions',   icon: FileText },
   { to: '/quotations',  label: 'Quotations',    icon: ReceiptText },

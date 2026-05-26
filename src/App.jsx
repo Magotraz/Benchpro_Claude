@@ -16,7 +16,8 @@ import Jobs        from './pages/Jobs'
 import Candidates  from './pages/Candidates'
 import Submissions from './pages/Submissions'
 import Quotations  from './pages/Quotations'
-import Pipeline    from './pages/Pipeline'
+import Pipeline           from './pages/Pipeline'
+import InterviewCalendar  from './pages/InterviewCalendar'
 
 // Client portal pages
 import ClientDashboard   from './pages/client/ClientDashboard'
@@ -77,6 +78,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['super_recruiter', 'recruiter']}>
                 <Pipeline />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="interviews"
+            element={
+              <ProtectedRoute allowedRoles={['super_recruiter', 'recruiter']}>
+                <InterviewCalendar />
               </ProtectedRoute>
             }
           />
