@@ -75,7 +75,9 @@ CREATE TABLE IF NOT EXISTS demo_requests (
 -- FUNCTIONS & TRIGGERS
 -- ----------------------------------------------------------------
 
--- Auto-creates a profile row whenever a new auth.user is inserted
+-- Auto-creates a profile row whenever a new auth.user is inserted.
+-- For candidates it also seeds candidate_profiles so the portal
+-- is immediately usable after email confirmation.
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -87,6 +89,19 @@ BEGIN
     COALESCE(NEW.raw_user_meta_data->>'full_name', '')
   )
   ON CONFLICT (id) DO NOTHING;
+
+  IF COALESCE(NEW.raw_user_meta_data->>'role', '') = 'candidate' THEN
+    INSERT INTO public.candidate_profiles (user_id, full_name, email, phone, current_title)
+    VALUES (
+      NEW.id,
+      COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
+      NEW.email,
+      NULLIF(TRIM(COALESCE(NEW.raw_user_meta_data->>'phone',         '')), ''),
+      NULLIF(TRIM(COALESCE(NEW.raw_user_meta_data->>'current_title', '')), '')
+    )
+    ON CONFLICT (user_id) DO NOTHING;
+  END IF;
+
   RETURN NEW;
 END;
 $$;
