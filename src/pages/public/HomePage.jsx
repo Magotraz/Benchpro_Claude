@@ -4,26 +4,6 @@ import { MapPin, ArrowRight, CheckCircle, Menu, X, Star } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 
-// ─── Floating hero pills ──────────────────────────────────────────────────────
-const PILLS = [
-  { label: 'Oracle Cloud',   top: '15%', left: '5%',   rotate: '-2deg' },
-  { label: 'SAP',            top: '28%', left: '7%',   rotate:  '2deg' },
-  { label: 'Java',           top: '41%', left: '4%',   rotate: '-1deg' },
-  { label: 'Hyderabad',      top: '55%', left: '6%',   rotate:  '3deg' },
-  { label: 'Data Engineer',  top: '68%', left: '4%',   rotate: '-2deg' },
-  { label: 'Pune',           top: '81%', left: '7%',   rotate:  '1deg' },
-  { label: 'Salesforce',     top: '13%', right: '5%',  rotate:  '2deg' },
-  { label: 'React Developer',top: '26%', right: '4%',  rotate: '-3deg' },
-  { label: 'AWS',            top: '39%', right: '6%',  rotate:  '1deg' },
-  { label: 'Bangalore',      top: '52%', right: '4%',  rotate: '-2deg' },
-  { label: 'Node.js',        top: '65%', right: '5%',  rotate:  '3deg' },
-  { label: 'DevOps',         top: '78%', right: '7%',  rotate: '-1deg' },
-  { label: 'Mumbai',         top:  '9%', left: '22%',  rotate:  '1deg' },
-  { label: 'Salesforce CPQ', top:  '9%', right: '19%', rotate: '-2deg' },
-  { label: 'Delhi NCR',      top: '89%', left: '26%',  rotate:  '2deg' },
-  { label: 'Power BI',       top: '89%', right: '23%', rotate: '-1deg' },
-]
-
 const TYPE_COLORS = {
   'Full-time': 'bg-blue-50 text-blue-700',
   'Part-time':  'bg-violet-50 text-violet-700',
@@ -215,25 +195,14 @@ export default function HomePage() {
       </nav>
 
       {/* ── HERO ────────────────────────────────────────────────── */}
-      <section className="relative min-h-[calc(100vh-64px)] flex items-center justify-center overflow-hidden bg-white">
-        {PILLS.map(({ label, rotate, ...pos }) => (
-          <span
-            key={label}
-            style={{ position: 'absolute', transform: `rotate(${rotate})`, ...pos }}
-            className="hidden lg:inline-flex px-4 py-2 bg-white border border-gray-200 rounded-full text-sm text-gray-500 shadow-sm select-none whitespace-nowrap"
-          >
-            {label}
-          </span>
-        ))}
-
-        <div className="relative z-10 text-center px-6 max-w-3xl">
-          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold text-gray-900 tracking-tight leading-[1.08]">
-            On-demand tech talent,<br />
-            <span className="text-gray-700">on your project timeline</span>
+      <section className="flex items-center justify-center bg-white py-32 lg:py-40">
+        <div className="text-center px-6 max-w-3xl">
+          <h1 className="text-6xl lg:text-7xl font-extrabold tracking-tight text-gray-900 leading-[1.08]">
+            Only The Best<br />
+            Make It.
           </h1>
-          <p className="mt-6 text-lg text-gray-500 max-w-2xl mx-auto leading-relaxed">
-            AI-assisted screening, expert-verified shortlists. Vetted contractors across ERP, Cloud, Data &amp; Engineering —
-            placed in days, billed monthly, zero hiring overhead.
+          <p className="mt-4 text-lg lg:text-xl text-gray-500 max-w-xl mx-auto">
+            Skip the shortlisting. We've already done it.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <button
@@ -249,6 +218,9 @@ export default function HomePage() {
               See how it works
             </button>
           </div>
+          <p className="mt-12 text-sm text-gray-400 tracking-wide">
+            50+ clients · 500+ placements · ERP · Cloud · Engineering · India · UK · Gulf
+          </p>
         </div>
       </section>
 
