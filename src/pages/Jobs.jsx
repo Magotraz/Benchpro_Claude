@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Briefcase, MapPin, Users, Edit2, ExternalLink, Globe } from 'lucide-react'
+import { Plus, Briefcase, MapPin, Users, Edit2, ExternalLink, Globe, Inbox } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatCurrency } from '../lib/utils'
 import Modal from '../components/Modal'
+import JobApplicationsPanel from '../components/JobApplicationsPanel'
 
 const STATUS_COLORS = {
   open:    'bg-emerald-100 text-emerald-700',
@@ -86,6 +87,7 @@ export default function Jobs() {
   const [form, setForm]       = useState(EMPTY)
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')
+  const [appPanel, setAppPanel] = useState(null) // job for applications panel
 
   useEffect(() => { loadAll() }, [])
 
@@ -258,6 +260,13 @@ export default function Jobs() {
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-1 justify-end">
                       <button
+                        onClick={() => setAppPanel(job)}
+                        title="Review applications"
+                        className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      >
+                        <Inbox size={14} />
+                      </button>
+                      <button
                         onClick={() => navigate(`/pipeline?job=${job.id}`)}
                         title="Open pipeline"
                         className="p-2 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
@@ -277,6 +286,10 @@ export default function Jobs() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {appPanel && (
+        <JobApplicationsPanel job={appPanel} onClose={() => setAppPanel(null)} />
       )}
 
       {modal && (

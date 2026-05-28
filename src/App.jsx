@@ -31,6 +31,7 @@ import ClientDashboard    from './pages/client/ClientDashboard'
 import ClientJobs         from './pages/client/ClientJobs'
 import ClientSubmissions  from './pages/client/ClientSubmissions'
 import ClientQuotations   from './pages/client/ClientQuotations'
+import ClientApplicants   from './pages/client/ClientApplicants'
 
 // Admin pages
 import AdminPanel  from './pages/admin/AdminPanel'
@@ -136,6 +137,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['client']}>
                 <ClientJobs />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/client/applicants"
+            element={
+              <ProtectedRoute allowedRoles={['client']}>
+                <ClientApplicants />
               </ProtectedRoute>
             }
           />
