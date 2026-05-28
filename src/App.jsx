@@ -4,6 +4,11 @@ import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import CandidateLayout from './components/CandidateLayout'
 
+// Public pages
+import HomePage    from './pages/public/HomePage'
+import JobBoard    from './pages/public/JobBoard'
+import JobDetail   from './pages/public/JobDetail'
+
 // Auth pages
 import Login              from './pages/auth/Login'
 import SignupCandidate    from './pages/auth/SignupCandidate'
@@ -11,10 +16,6 @@ import RegisterCandidate  from './pages/auth/RegisterCandidate'
 import AcceptInvite       from './pages/auth/AcceptInvite'
 import DemoRequest        from './pages/auth/DemoRequest'
 import VerifyEmail        from './pages/auth/VerifyEmail'
-
-// Public job board (no auth required)
-import JobBoard    from './pages/public/JobBoard'
-import JobDetail   from './pages/public/JobDetail'
 
 // Recruiter/admin pages
 import Dashboard          from './pages/Dashboard'
@@ -75,11 +76,15 @@ export default function App() {
   return (
     <AuthProvider>
       <Routes>
-        {/* ── Public job board (no auth) ─────────────────────── */}
+
+        {/* ── Public landing page — / (auth-aware redirect inside) ─ */}
+        <Route path="/" element={<HomePage />} />
+
+        {/* ── Public job board ──────────────────────────────────── */}
         <Route path="/jobs"       element={<JobBoard />} />
         <Route path="/jobs/:slug" element={<JobDetail />} />
 
-        {/* ── Public auth routes ─────────────────────────────── */}
+        {/* ── Public auth routes ────────────────────────────────── */}
         <Route path="/login"          element={<Login />} />
         <Route path="/signup"         element={<SignupCandidate />} />
         <Route path="/register"       element={<RegisterCandidate />} />
@@ -87,7 +92,7 @@ export default function App() {
         <Route path="/request-demo"   element={<DemoRequest />} />
         <Route path="/verify-email"   element={<VerifyEmail />} />
 
-        {/* ── Candidate portal (/candidate/*) ────────────────── */}
+        {/* ── Candidate portal (/candidate/*) ──────────────────── */}
         <Route
           path="/candidate"
           element={
@@ -104,43 +109,38 @@ export default function App() {
           <Route path="applications" element={<CandidateApplications />} />
         </Route>
 
-        {/* ── Recruiter / client portal (/*)  ────────────────── */}
+        {/* ── Recruiter / client portal — pathless layout ───────── */}
+        {/* Uses a pathless Route so child paths are absolute and   */}
+        {/* do not conflict with the public / homepage above.       */}
         <Route
-          path="/"
           element={
             <ProtectedRoute>
               <Layout />
             </ProtectedRoute>
           }
         >
-          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard"   element={<DashboardByRole />} />
+          <Route path="/submissions" element={<SubmissionsByRole />} />
+          <Route path="/quotations"  element={<QuotationsByRole />} />
 
-          <Route path="dashboard"   element={<DashboardByRole />} />
-          <Route path="submissions" element={<SubmissionsByRole />} />
-          <Route path="quotations"  element={<QuotationsByRole />} />
-
-          {/* Recruiter job management */}
           <Route
-            path="manage/jobs"
+            path="/manage/jobs"
             element={
               <ProtectedRoute allowedRoles={['super_recruiter', 'recruiter']}>
                 <Jobs />
               </ProtectedRoute>
             }
           />
-
-          {/* Client job view */}
           <Route
-            path="client/jobs"
+            path="/client/jobs"
             element={
               <ProtectedRoute allowedRoles={['client']}>
                 <ClientJobs />
               </ProtectedRoute>
             }
           />
-
           <Route
-            path="candidates"
+            path="/candidates"
             element={
               <ProtectedRoute allowedRoles={['super_recruiter', 'recruiter']}>
                 <Candidates />
@@ -148,7 +148,7 @@ export default function App() {
             }
           />
           <Route
-            path="pipeline"
+            path="/pipeline"
             element={
               <ProtectedRoute allowedRoles={['super_recruiter', 'recruiter']}>
                 <Pipeline />
@@ -156,7 +156,7 @@ export default function App() {
             }
           />
           <Route
-            path="interviews"
+            path="/interviews"
             element={
               <ProtectedRoute allowedRoles={['super_recruiter', 'recruiter']}>
                 <InterviewCalendar />
@@ -164,9 +164,9 @@ export default function App() {
             }
           />
 
-          {/* ── Admin (super_recruiter only) ───────────────────── */}
+          {/* ── Admin (super_recruiter only) ─────────────────── */}
           <Route
-            path="admin"
+            path="/admin"
             element={
               <ProtectedRoute allowedRoles={['super_recruiter']}>
                 <AdminPanel />
@@ -182,6 +182,7 @@ export default function App() {
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
+
       </Routes>
     </AuthProvider>
   )
