@@ -12,6 +12,10 @@ import AcceptInvite       from './pages/auth/AcceptInvite'
 import DemoRequest        from './pages/auth/DemoRequest'
 import VerifyEmail        from './pages/auth/VerifyEmail'
 
+// Public job board (no auth required)
+import JobBoard    from './pages/public/JobBoard'
+import JobDetail   from './pages/public/JobDetail'
+
 // Recruiter/admin pages
 import Dashboard          from './pages/Dashboard'
 import Jobs               from './pages/Jobs'
@@ -51,13 +55,6 @@ function DashboardByRole() {
   return <Dashboard />
 }
 
-function JobsByRole() {
-  const { role } = useAuth()
-  if (role === 'candidate') return <Navigate to="/candidate/jobs" replace />
-  if (role === 'client')    return <ClientJobs />
-  return <Jobs />
-}
-
 function SubmissionsByRole() {
   const { role } = useAuth()
   if (role === 'candidate') return <Navigate to="/candidate/applications" replace />
@@ -78,6 +75,10 @@ export default function App() {
   return (
     <AuthProvider>
       <Routes>
+        {/* ── Public job board (no auth) ─────────────────────── */}
+        <Route path="/jobs"       element={<JobBoard />} />
+        <Route path="/jobs/:slug" element={<JobDetail />} />
+
         {/* ── Public auth routes ─────────────────────────────── */}
         <Route path="/login"          element={<Login />} />
         <Route path="/signup"         element={<SignupCandidate />} />
@@ -95,12 +96,12 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index                element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard"     element={<CandidateDashboard />} />
-          <Route path="profile"       element={<CandidateProfile />} />
-          <Route path="resume"        element={<CandidateResume />} />
-          <Route path="jobs"          element={<CandidateJobs />} />
-          <Route path="applications"  element={<CandidateApplications />} />
+          <Route index               element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard"    element={<CandidateDashboard />} />
+          <Route path="profile"      element={<CandidateProfile />} />
+          <Route path="resume"       element={<CandidateResume />} />
+          <Route path="jobs"         element={<CandidateJobs />} />
+          <Route path="applications" element={<CandidateApplications />} />
         </Route>
 
         {/* ── Recruiter / client portal (/*)  ────────────────── */}
@@ -115,9 +116,28 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
 
           <Route path="dashboard"   element={<DashboardByRole />} />
-          <Route path="jobs"        element={<JobsByRole />} />
           <Route path="submissions" element={<SubmissionsByRole />} />
           <Route path="quotations"  element={<QuotationsByRole />} />
+
+          {/* Recruiter job management */}
+          <Route
+            path="manage/jobs"
+            element={
+              <ProtectedRoute allowedRoles={['super_recruiter', 'recruiter']}>
+                <Jobs />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Client job view */}
+          <Route
+            path="client/jobs"
+            element={
+              <ProtectedRoute allowedRoles={['client']}>
+                <ClientJobs />
+              </ProtectedRoute>
+            }
+          />
 
           <Route
             path="candidates"

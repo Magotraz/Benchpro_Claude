@@ -74,7 +74,7 @@ export default function CandidateJobs() {
     return jobs.filter(j =>
       j.title?.toLowerCase().includes(q) ||
       j.location?.toLowerCase().includes(q) ||
-      (j.skills_required ?? j.required_skills ?? []).some(s => s.toLowerCase().includes(q))
+      (j.skills_required ?? []).some(s => s.toLowerCase().includes(q))
     )
   }, [jobs, search])
 
@@ -148,7 +148,7 @@ export default function CandidateJobs() {
           {filtered.map(job => {
             const isApplied = appliedIds.has(job.id)
             const isApplying = applying === job.id
-            const skills = job.skills_required ?? job.required_skills ?? []
+            const skills = job.skills_required ?? []
 
             return (
               <div
@@ -179,9 +179,9 @@ export default function CandidateJobs() {
                       <MapPin size={11} /> {job.location}
                     </span>
                   )}
-                  {job.min_experience != null && (
+                  {job.experience_min > 0 && (
                     <span className="text-xs text-gray-400 flex items-center gap-1">
-                      <Briefcase size={11} /> {job.min_experience}+ yrs
+                      <Briefcase size={11} /> {job.experience_min}+ yrs
                     </span>
                   )}
                   <span className="text-xs text-gray-400 flex items-center gap-1">

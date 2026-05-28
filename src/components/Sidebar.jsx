@@ -8,7 +8,7 @@ import { ROLE_LABELS } from '../lib/auth'
 
 const recruiterNav = [
   { to: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
-  { to: '/jobs',        label: 'Jobs',          icon: Briefcase },
+  { to: '/manage/jobs', label: 'Jobs',          icon: Briefcase },
   { to: '/pipeline',    label: 'Pipeline',      icon: LayoutGrid },
   { to: '/interviews',  label: 'Interviews',    icon: CalendarDays },
   { to: '/candidates',  label: 'Candidates',    icon: Users },
@@ -18,15 +18,15 @@ const recruiterNav = [
 
 const clientNav = [
   { to: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
-  { to: '/jobs',        label: 'My Jobs',       icon: Briefcase },
+  { to: '/client/jobs', label: 'My Jobs',       icon: Briefcase },
   { to: '/submissions', label: 'Candidates',    icon: FileText },
   { to: '/quotations',  label: 'Quotations',    icon: ReceiptText },
 ]
 
 const candidateNav = [
-  { to: '/dashboard',   label: 'Dashboard',       icon: LayoutDashboard },
-  { to: '/jobs',        label: 'Browse Jobs',      icon: Briefcase },
-  { to: '/submissions', label: 'My Applications',  icon: FileText },
+  { to: '/dashboard',        label: 'Dashboard',       icon: LayoutDashboard },
+  { to: '/candidate/jobs',   label: 'Browse Jobs',      icon: Briefcase },
+  { to: '/candidate/applications', label: 'My Applications', icon: FileText },
 ]
 
 function navForRole(role) {
