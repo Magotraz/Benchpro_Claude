@@ -41,7 +41,7 @@ function initials(name) {
   return name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()
 }
 
-export default function Sidebar() {
+export default function Sidebar({ onClose }) {
   const { profile, role, signOut } = useAuth()
   const navigate  = useNavigate()
   const location  = useLocation()
@@ -53,8 +53,12 @@ export default function Sidebar() {
     navigate('/login', { replace: true })
   }
 
+  function handleNavClick() {
+    onClose?.()
+  }
+
   return (
-    <aside className="flex flex-col w-64 min-h-screen bg-brand-900 text-white shrink-0">
+    <aside className="flex flex-col w-64 h-full bg-brand-900 text-white shrink-0">
       {/* Branding */}
       <div className="flex items-center gap-3 px-6 py-5 border-b border-white/10">
         <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-brand-500 font-bold text-white text-lg select-none">
@@ -72,6 +76,7 @@ export default function Sidebar() {
           <NavLink
             key={to}
             to={to}
+            onClick={handleNavClick}
             className={({ isActive }) =>
               `group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 isActive

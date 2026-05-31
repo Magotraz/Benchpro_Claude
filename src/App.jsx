@@ -16,6 +16,8 @@ import RegisterCandidate  from './pages/auth/RegisterCandidate'
 import AcceptInvite       from './pages/auth/AcceptInvite'
 import DemoRequest        from './pages/auth/DemoRequest'
 import VerifyEmail        from './pages/auth/VerifyEmail'
+import ForgotPassword     from './pages/auth/ForgotPassword'
+import ResetPassword      from './pages/auth/ResetPassword'
 
 // Recruiter/admin pages
 import Dashboard          from './pages/Dashboard'
@@ -40,6 +42,10 @@ import Recruiters  from './pages/admin/Recruiters'
 import Clients     from './pages/admin/Clients'
 import Invites     from './pages/admin/Invites'
 import Analytics   from './pages/admin/Analytics'
+import AuditLog    from './pages/admin/AuditLog'
+
+// Other pages
+import NotFound from './pages/NotFound'
 
 // Candidate portal pages
 import CandidateDashboard    from './pages/candidate/CandidateDashboard'
@@ -86,12 +92,14 @@ export default function App() {
         <Route path="/jobs/:slug" element={<JobDetail />} />
 
         {/* ── Public auth routes ────────────────────────────────── */}
-        <Route path="/login"          element={<Login />} />
-        <Route path="/signup"         element={<SignupCandidate />} />
-        <Route path="/register"       element={<RegisterCandidate />} />
-        <Route path="/accept-invite"  element={<AcceptInvite />} />
-        <Route path="/request-demo"   element={<DemoRequest />} />
-        <Route path="/verify-email"   element={<VerifyEmail />} />
+        <Route path="/login"            element={<Login />} />
+        <Route path="/signup"           element={<SignupCandidate />} />
+        <Route path="/register"         element={<RegisterCandidate />} />
+        <Route path="/accept-invite"    element={<AcceptInvite />} />
+        <Route path="/request-demo"     element={<DemoRequest />} />
+        <Route path="/verify-email"     element={<VerifyEmail />} />
+        <Route path="/forgot-password"  element={<ForgotPassword />} />
+        <Route path="/reset-password"   element={<ResetPassword />} />
 
         {/* ── Candidate portal (/candidate/*) ──────────────────── */}
         <Route
@@ -187,10 +195,11 @@ export default function App() {
             <Route path="clients"    element={<Clients />} />
             <Route path="invites"    element={<Invites />} />
             <Route path="analytics"  element={<Analytics />} />
+            <Route path="audit-log"  element={<AuditLog />} />
           </Route>
         </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFound />} />
 
       </Routes>
     </AuthProvider>

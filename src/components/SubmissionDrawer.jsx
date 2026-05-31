@@ -8,6 +8,7 @@ import {
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { createNotification } from '../lib/notifications'
+import { logAudit } from '../lib/audit'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ function stageLabel(id) { return STAGES.find(s => s.id === id)?.label ?? id }
 // ─── Schedule Interview Modal ─────────────────────────────────────────────────
 
 function ScheduleModal({ submission, roundCount, onClose, onSaved }) {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [form, setForm] = useState({
     round_number: roundCount + 1,
     type:         'video',
@@ -78,7 +79,12 @@ function ScheduleModal({ submission, roundCount, onClose, onSaved }) {
     })
 
     if (!error) {
-      // Move stage to interview if still early
+      logAudit({
+        userId: user.id, userName: profile?.full_name ?? user.email,
+        action: 'created', entityType: 'interview', entityId: submission.id,
+        entityName: `Round ${form.round_number} — ${submission.candidates?.full_name ?? 'Candidate'}`,
+        newValue: TYPE_LABEL[form.type],
+      })
       if (!['interview', 'offer', 'placed'].includes(submission.stage)) {
         await supabase.from('submissions').update({ stage: 'interview' }).eq('id', submission.id)
       }

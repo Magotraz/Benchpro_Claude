@@ -4,15 +4,17 @@ import { supabase } from '../../lib/supabase'
 import { Eye, EyeOff } from 'lucide-react'
 
 export default function Login() {
-  const navigate  = useNavigate()
-  const location  = useLocation()
-  const from      = location.state?.from?.pathname ?? '/dashboard'
-  const initError = location.state?.error ?? ''
+  const navigate   = useNavigate()
+  const location   = useLocation()
+  const from       = location.state?.from?.pathname ?? '/dashboard'
+  const initError  = location.state?.error ?? ''
+  const initMsg    = location.state?.message ?? ''
 
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw]     = useState(false)
   const [error, setError]       = useState(initError)
+  const [message, setMessage]   = useState(initMsg)
   const [loading, setLoading]   = useState(false)
 
   async function handleSubmit(e) {
@@ -46,6 +48,12 @@ export default function Login() {
         <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
         <p className="mt-1 text-sm text-gray-500">Sign in to your account</p>
 
+        {message && (
+          <div className="mt-5 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700">
+            {message}
+          </div>
+        )}
+
         {error && (
           <div className="mt-5 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
             {error}
@@ -68,9 +76,12 @@ export default function Login() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Password
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-sm font-medium text-gray-700">Password</label>
+              <Link to="/forgot-password" className="text-xs text-indigo-600 hover:underline">
+                Forgot password?
+              </Link>
+            </div>
             <div className="relative">
               <input
                 type={showPw ? 'text' : 'password'}

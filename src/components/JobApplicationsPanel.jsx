@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { X, Star, Download, CheckCircle, Clock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { logAudit } from '../lib/audit'
 
 const FILTERS = ['all', 'unreviewed', 'reviewed', 'passed']
 const FILTER_LABELS = {
@@ -54,7 +55,7 @@ function StarWidget({ value, onChange }) {
 }
 
 export default function JobApplicationsPanel({ job, onClose }) {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [apps, setApps]     = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter]   = useState('all')
@@ -118,6 +119,12 @@ export default function JobApplicationsPanel({ job, onClose }) {
       reviewed_at:      new Date().toISOString(),
       passed_to_client: true,
     }).eq('id', appId)
+    const app = apps.find(a => a.id === appId)
+    logAudit({
+      userId: user.id, userName: profile?.full_name ?? user.email,
+      action: 'passed_to_client', entityType: 'application', entityId: appId,
+      entityName: `${app?.candidate_profiles?.full_name ?? 'Candidate'} → ${job.title}`,
+    })
     await load()
     setSaving(s => ({ ...s, [appId]: false }))
   }

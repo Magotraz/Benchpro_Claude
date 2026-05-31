@@ -7,10 +7,12 @@ import {
 import {
   Plus, LayoutGrid, List, Briefcase, Mail, MapPin, Clock,
   ChevronUp, ChevronDown, ChevronsUpDown, Search, Filter,
+  Download, X, ChevronDown as ChevDown,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { createNotification } from '../lib/notifications'
+import { logAudit } from '../lib/audit'
 import Modal from '../components/Modal'
 import SubmissionDrawer from '../components/SubmissionDrawer'
 
@@ -37,10 +39,29 @@ function daysAgo(dateStr) {
   return `${d}d ago`
 }
 
-// ─── Droppable Column ────────────────────────────────────────────────────────
+function exportCSV(rows) {
+  const headers = ['Candidate', 'Job', 'Stage', 'Recruiter', 'Date Added']
+  const data = rows.map(s => [
+    s.candidates?.full_name ?? '',
+    s.jobs?.title ?? '',
+    s.stage,
+    s.profiles?.full_name ?? '',
+    s.created_at ? new Date(s.created_at).toLocaleDateString('en-IN') : '',
+  ])
+  const csv = [headers, ...data].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `benchpro-pipeline-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ─── Kanban components ────────────────────────────────────────────────────────
+
 function KanbanColumn({ stage, cards, onCardClick, isDraggingId }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id })
-
   return (
     <div
       ref={setNodeRef}
@@ -55,7 +76,6 @@ function KanbanColumn({ stage, cards, onCardClick, isDraggingId }) {
         </div>
         <span className="text-xs font-bold opacity-60">{cards.length}</span>
       </div>
-
       <div className="flex-1 p-2 space-y-2 min-h-[420px]">
         {cards.map(sub => (
           <KanbanCard
@@ -70,13 +90,11 @@ function KanbanColumn({ stage, cards, onCardClick, isDraggingId }) {
   )
 }
 
-// ─── Draggable Card ──────────────────────────────────────────────────────────
 function KanbanCard({ submission, onClick, isBeingDragged, overlay = false }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: submission.id,
     disabled: overlay,
   })
-
   const style = transform ? { transform: `translate3d(${transform.x}px,${transform.y}px,0)` } : undefined
   const c = submission.candidates
 
@@ -102,7 +120,6 @@ function KanbanCard({ submission, onClick, isBeingDragged, overlay = false }) {
           )}
         </div>
       </div>
-
       {c?.current_company && (
         <p className="text-xs text-gray-400 flex items-center gap-1 mb-1">
           <Briefcase size={10} className="shrink-0" /> {c.current_company}
@@ -113,12 +130,10 @@ function KanbanCard({ submission, onClick, isBeingDragged, overlay = false }) {
           <MapPin size={10} className="shrink-0" /> {c.location}
         </p>
       )}
-
       <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
         {(c?.skills?.length > 0) ? (
           <span className="text-xs px-1.5 py-0.5 bg-indigo-50 text-indigo-500 rounded font-medium truncate max-w-[80px]">
-            {c.skills[0]}
-            {c.skills.length > 1 ? ` +${c.skills.length - 1}` : ''}
+            {c.skills[0]}{c.skills.length > 1 ? ` +${c.skills.length - 1}` : ''}
           </span>
         ) : <span />}
         <span className="text-xs text-gray-400 flex items-center gap-1 shrink-0">
@@ -129,12 +144,48 @@ function KanbanCard({ submission, onClick, isBeingDragged, overlay = false }) {
   )
 }
 
-// ─── Table View ──────────────────────────────────────────────────────────────
-function TableView({ submissions, onRowClick }) {
+// ─── Kanban skeleton ─────────────────────────────────────────────────────────
+
+function KanbanSkeleton() {
+  return (
+    <div className="flex gap-4 overflow-x-auto pb-4 flex-1">
+      {STAGES.map(stage => (
+        <div key={stage.id} className={`flex flex-col w-60 shrink-0 rounded-xl border border-gray-200 ${stage.bg}`}>
+          <div className={`flex items-center justify-between px-3 py-2.5 rounded-t-xl ${stage.header}`}>
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${stage.dot}`} />
+              <span className="text-xs font-semibold">{stage.label}</span>
+            </div>
+          </div>
+          <div className="flex-1 p-2 space-y-2 min-h-[420px] animate-pulse">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="bg-white rounded-lg border border-gray-200 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-7 h-7 rounded-full bg-gray-200 shrink-0" />
+                  <div className="space-y-1 flex-1">
+                    <div className="h-3 bg-gray-200 rounded w-3/4" />
+                    <div className="h-2 bg-gray-100 rounded w-1/2" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Table View ───────────────────────────────────────────────────────────────
+
+function TableView({ submissions, onRowClick, onBulkStageChange }) {
   const [sortCol, setSortCol] = useState('date')
   const [sortDir, setSortDir] = useState('desc')
   const [search, setSearch]   = useState('')
   const [stageFilter, setStageFilter] = useState('all')
+  const [selected, setSelected]       = useState(new Set())
+  const [bulkStage, setBulkStage]     = useState('')
+  const [bulkApplying, setBulkApplying] = useState(false)
 
   function toggleSort(col) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -168,6 +219,34 @@ function TableView({ submissions, onRowClick }) {
     return rows
   }, [submissions, stageFilter, search, sortCol, sortDir])
 
+  const allSelected  = filtered.length > 0 && filtered.every(r => selected.has(r.id))
+  const someSelected = selected.size > 0
+
+  function toggleAll() {
+    if (allSelected) setSelected(new Set())
+    else setSelected(new Set(filtered.map(r => r.id)))
+  }
+  function toggleRow(id) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+  function clearSelection() { setSelected(new Set()); setBulkStage('') }
+
+  async function applyBulkStage() {
+    if (!bulkStage || selected.size === 0) return
+    setBulkApplying(true)
+    const ids = [...selected]
+    await supabase.from('submissions')
+      .update({ stage: bulkStage, updated_at: new Date().toISOString() })
+      .in('id', ids)
+    onBulkStageChange(ids, bulkStage)
+    clearSelection()
+    setBulkApplying(false)
+  }
+
   function SortIcon({ col }) {
     if (sortCol !== col) return <ChevronsUpDown size={12} className="text-gray-300 shrink-0" />
     return sortDir === 'asc'
@@ -188,6 +267,39 @@ function TableView({ submissions, onRowClick }) {
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Bulk action bar */}
+      {someSelected && (
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-brand-50 border border-brand-200 rounded-xl">
+          <span className="text-sm font-semibold text-brand-700">{selected.size} candidate{selected.size !== 1 ? 's' : ''} selected</span>
+          <div className="flex items-center gap-2 flex-1 flex-wrap">
+            <select
+              value={bulkStage}
+              onChange={e => setBulkStage(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-brand-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+            >
+              <option value="">Change stage…</option>
+              {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+            <button
+              onClick={applyBulkStage}
+              disabled={!bulkStage || bulkApplying}
+              className="px-4 py-1.5 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-50"
+            >
+              {bulkApplying ? 'Applying…' : 'Apply'}
+            </button>
+            <button
+              onClick={() => exportCSV(filtered.filter(r => selected.has(r.id)))}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 bg-white rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <Download size={13} /> Export selected
+            </button>
+          </div>
+          <button onClick={clearSelection} className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 ml-auto">
+            <X size={14} /> Clear
+          </button>
+        </div>
+      )}
+
       {/* Filters row */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative">
@@ -211,16 +323,21 @@ function TableView({ submissions, onRowClick }) {
           </select>
         </div>
         {(search || stageFilter !== 'all') && (
-          <button
-            onClick={() => { setSearch(''); setStageFilter('all') }}
-            className="text-xs text-brand-600 hover:underline"
-          >
+          <button onClick={() => { setSearch(''); setStageFilter('all') }} className="text-xs text-brand-600 hover:underline">
             Clear
           </button>
         )}
-        <p className="text-xs text-gray-400 ml-auto">
-          {filtered.length} of {submissions.length} candidate{submissions.length !== 1 ? 's' : ''}
-        </p>
+        <div className="ml-auto flex items-center gap-3">
+          <p className="text-xs text-gray-400">{filtered.length} of {submissions.length} candidate{submissions.length !== 1 ? 's' : ''}</p>
+          {filtered.length > 0 && (
+            <button
+              onClick={() => exportCSV(filtered)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <Download size={12} /> Export CSV
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Table */}
@@ -229,7 +346,15 @@ function TableView({ submissions, onRowClick }) {
           <table className="w-full text-sm">
             <thead className="border-b border-gray-100 bg-gray-50/70">
               <tr>
-                <Th col="name"      label="Candidate" className="pl-5" />
+                <th className="pl-4 py-3 w-8">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    className="w-4 h-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                  />
+                </th>
+                <Th col="name"      label="Candidate" className="pl-2" />
                 <Th col="job"       label="Job" />
                 <Th col="stage"     label="Stage" />
                 <Th col="recruiter" label="Recruiter" />
@@ -239,19 +364,27 @@ function TableView({ submissions, onRowClick }) {
             <tbody className="divide-y divide-gray-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-14 text-center text-sm text-gray-400">
+                  <td colSpan={6} className="px-4 py-14 text-center text-sm text-gray-400">
                     No candidates match your filters.
                   </td>
                 </tr>
               ) : filtered.map(sub => {
-                const stg = STAGES.find(s => s.id === sub.stage)
+                const stg        = STAGES.find(s => s.id === sub.stage)
+                const isSelected = selected.has(sub.id)
                 return (
                   <tr
                     key={sub.id}
-                    onClick={() => onRowClick(sub)}
-                    className="hover:bg-brand-50/40 cursor-pointer transition-colors"
+                    className={`transition-colors cursor-pointer ${isSelected ? 'bg-brand-50/60' : 'hover:bg-brand-50/40'}`}
                   >
-                    <td className="pl-5 pr-4 py-3">
+                    <td className="pl-4 py-3 w-8" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleRow(sub.id)}
+                        className="w-4 h-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                      />
+                    </td>
+                    <td className="pl-2 pr-4 py-3" onClick={() => onRowClick(sub)}>
                       <div className="flex items-center gap-2.5">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${avatarColor(sub.candidate_id)}`}>
                           {initials(sub.candidates?.full_name)}
@@ -264,18 +397,18 @@ function TableView({ submissions, onRowClick }) {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-600 max-w-[160px]">
+                    <td className="px-4 py-3 text-gray-600 max-w-[160px]" onClick={() => onRowClick(sub)}>
                       <p className="truncate">{sub.jobs?.title ?? '—'}</p>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={() => onRowClick(sub)}>
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${stg?.header ?? 'bg-gray-100 text-gray-500'}`}>
                         {stg?.label ?? sub.stage}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs" onClick={() => onRowClick(sub)}>
                       {sub.profiles?.full_name ?? '—'}
                     </td>
-                    <td className="px-4 py-3 text-gray-400 whitespace-nowrap text-xs">
+                    <td className="px-4 py-3 text-gray-400 whitespace-nowrap text-xs" onClick={() => onRowClick(sub)}>
                       {sub.created_at
                         ? new Date(sub.created_at).toLocaleDateString('en-IN', { dateStyle: 'medium' })
                         : '—'}
@@ -291,26 +424,59 @@ function TableView({ submissions, onRowClick }) {
   )
 }
 
-// ─── Pipeline Page ───────────────────────────────────────────────────────────
+// ─── Table skeleton ──────────────────────────────────────────────────────────
+
+function TableSkeleton() {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden animate-pulse">
+      <table className="w-full text-sm">
+        <thead className="border-b border-gray-100 bg-gray-50/70">
+          <tr>
+            {['', 'Candidate', 'Job', 'Stage', 'Recruiter', 'Date'].map(h => (
+              <th key={h} className="px-4 py-3 text-left">
+                <div className="h-3 bg-gray-200 rounded w-16" />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {[1, 2, 3, 4, 5].map(i => (
+            <tr key={i}>
+              <td className="pl-4 py-4 w-8"><div className="w-4 h-4 bg-gray-200 rounded" /></td>
+              <td className="px-4 py-4"><div className="flex items-center gap-2.5"><div className="w-8 h-8 rounded-full bg-gray-200 shrink-0" /><div className="space-y-1"><div className="h-3 bg-gray-200 rounded w-32" /><div className="h-2 bg-gray-100 rounded w-24" /></div></div></td>
+              <td className="px-4 py-4"><div className="h-3 bg-gray-100 rounded w-28" /></td>
+              <td className="px-4 py-4"><div className="h-5 bg-gray-100 rounded-full w-20" /></td>
+              <td className="px-4 py-4"><div className="h-3 bg-gray-100 rounded w-24" /></td>
+              <td className="px-4 py-4"><div className="h-3 bg-gray-100 rounded w-20" /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ─── Pipeline Page ────────────────────────────────────────────────────────────
+
 export default function Pipeline() {
-  const { user }          = useAuth()
+  const { user, profile } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const [view, setView]           = useState('kanban')
-  const [jobs, setJobs]           = useState([])
+  const [view, setView]                 = useState('kanban')
+  const [jobs, setJobs]                 = useState([])
   const [selectedJobId, setSelectedJobId] = useState(searchParams.get('job') ?? '')
-  const [submissions, setSubmissions] = useState([])       // kanban: per-job
-  const [allSubmissions, setAllSubmissions] = useState([]) // table: all jobs
-  const [candidates, setCandidates] = useState([])
-  const [loadingJobs, setLoadingJobs] = useState(true)
-  const [loadingSubs, setLoadingSubs] = useState(false)
+  const [submissions, setSubmissions]   = useState([])
+  const [allSubmissions, setAllSubmissions] = useState([])
+  const [candidates, setCandidates]     = useState([])
+  const [loadingJobs, setLoadingJobs]   = useState(true)
+  const [loadingSubs, setLoadingSubs]   = useState(false)
   const [loadingTable, setLoadingTable] = useState(false)
-  const [activeId, setActiveId]   = useState(null)
-  const [drawer, setDrawer]       = useState(null)
-  const [addModal, setAddModal]   = useState(false)
-  const [addForm, setAddForm]     = useState({ candidate_id: '' })
-  const [adding, setAdding]       = useState(false)
-  const [addError, setAddError]   = useState('')
+  const [activeId, setActiveId]         = useState(null)
+  const [drawer, setDrawer]             = useState(null)
+  const [addModal, setAddModal]         = useState(false)
+  const [addForm, setAddForm]           = useState({ candidate_id: '' })
+  const [adding, setAdding]             = useState(false)
+  const [addError, setAddError]         = useState('')
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -379,6 +545,12 @@ export default function Pipeline() {
       type: 'stage_change', meta: { from: oldStage, to: newStage },
     })
     const sub = submissions.find(s => s.id === subId) ?? allSubmissions.find(s => s.id === subId)
+    const entityName = `${sub?.candidates?.full_name ?? 'Candidate'} → ${sub?.jobs?.title ?? ''}`
+    logAudit({
+      userId: user.id, userName: profile?.full_name ?? user.email,
+      action: 'stage_changed', entityType: 'submission', entityId: subId,
+      entityName, oldValue: stageName(oldStage), newValue: stageName(newStage),
+    })
     createNotification(
       sub?.submitted_by,
       'stage_change',
@@ -386,6 +558,16 @@ export default function Pipeline() {
       `${sub?.candidates?.full_name ?? 'Candidate'} moved to ${stageName(newStage)}`,
       `/pipeline?job=${sub?.job_id ?? selectedJobId}`,
     )
+  }
+
+  function handleBulkStageChange(ids, newStage) {
+    setAllSubmissions(prev => prev.map(s => ids.includes(s.id) ? { ...s, stage: newStage } : s))
+    setSubmissions(prev => prev.map(s => ids.includes(s.id) ? { ...s, stage: newStage } : s))
+    logAudit({
+      userId: user.id, userName: profile?.full_name ?? user.email,
+      action: 'stage_changed', entityType: 'submission', entityId: null,
+      entityName: `${ids.length} submissions`, newValue: stageName(newStage),
+    })
   }
 
   function stageName(id) { return STAGES.find(s => s.id === id)?.label ?? id }
@@ -403,24 +585,21 @@ export default function Pipeline() {
     if (error) { setAddError(error.message); setAdding(false); return }
     setSubmissions(prev => [...prev, data])
     setAllSubmissions(prev => [data, ...prev])
+    logAudit({
+      userId: user.id, userName: profile?.full_name ?? user.email,
+      action: 'created', entityType: 'submission', entityId: data.id,
+      entityName: `${data.candidates?.full_name ?? 'Candidate'} → ${data.jobs?.title ?? ''}`,
+    })
     createNotification(
-      user.id,
-      'new_submission',
-      'Candidate added to pipeline',
+      user.id, 'new_submission', 'Candidate added to pipeline',
       `${data.candidates?.full_name ?? 'Candidate'} added to ${selectedJob?.title ?? 'job'}`,
       `/pipeline?job=${selectedJobId}`,
     )
-    setAddModal(false)
-    setAddForm({ candidate_id: '' })
-    setAdding(false)
+    setAddModal(false); setAddForm({ candidate_id: '' }); setAdding(false)
   }
 
-  // Table submissions filtered by job dropdown
-  const tableRows = selectedJobId
-    ? allSubmissions.filter(s => s.job_id === selectedJobId)
-    : allSubmissions
-
-  const byStage = Object.fromEntries(STAGES.map(s => [s.id, submissions.filter(sub => sub.stage === s.id)]))
+  const tableRows = selectedJobId ? allSubmissions.filter(s => s.job_id === selectedJobId) : allSubmissions
+  const byStage   = Object.fromEntries(STAGES.map(s => [s.id, submissions.filter(sub => sub.stage === s.id)]))
   const activeSubmission = submissions.find(s => s.id === activeId)
   const selectedJob = jobs.find(j => j.id === selectedJobId)
 
@@ -444,14 +623,11 @@ export default function Pipeline() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* View toggle */}
           <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50 p-0.5 gap-0.5">
             <button
               onClick={() => setView('kanban')}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                view === 'kanban'
-                  ? 'bg-white text-gray-800 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
+                view === 'kanban' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               <LayoutGrid size={15} /> Kanban
@@ -459,9 +635,7 @@ export default function Pipeline() {
             <button
               onClick={() => setView('table')}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                view === 'table'
-                  ? 'bg-white text-gray-800 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
+                view === 'table' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               <List size={15} /> Table
@@ -488,7 +662,7 @@ export default function Pipeline() {
         </div>
       </div>
 
-      {/* ── Kanban view ────────────────────────────────────────────────────── */}
+      {/* Kanban view */}
       {view === 'kanban' && (
         !selectedJobId ? (
           <div className="flex-1 flex items-center justify-center">
@@ -499,8 +673,14 @@ export default function Pipeline() {
             </div>
           </div>
         ) : loadingSubs ? (
+          <KanbanSkeleton />
+        ) : submissions.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
-            <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+            <div className="text-center">
+              <LayoutGrid size={48} className="mx-auto text-gray-200 mb-4" />
+              <p className="font-medium text-gray-500">No candidates in pipeline for this job yet</p>
+              <p className="text-sm text-gray-400 mt-1">Click "Add Candidate" to add the first candidate.</p>
+            </div>
           </div>
         ) : (
           <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -515,7 +695,6 @@ export default function Pipeline() {
                 />
               ))}
             </div>
-
             <DragOverlay dropAnimation={null}>
               {activeSubmission && (
                 <KanbanCard submission={activeSubmission} onClick={() => {}} overlay />
@@ -525,14 +704,24 @@ export default function Pipeline() {
         )
       )}
 
-      {/* ── Table view ─────────────────────────────────────────────────────── */}
+      {/* Table view */}
       {view === 'table' && (
         loadingTable ? (
+          <TableSkeleton />
+        ) : tableRows.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
-            <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+            <div className="text-center py-16">
+              <List size={48} className="mx-auto text-gray-200 mb-4" />
+              <p className="font-medium text-gray-500">No submissions yet</p>
+              <p className="text-sm text-gray-400 mt-1">Add candidates to the pipeline to see them here.</p>
+            </div>
           </div>
         ) : (
-          <TableView submissions={tableRows} onRowClick={sub => setDrawer(sub)} />
+          <TableView
+            submissions={tableRows}
+            onRowClick={sub => setDrawer(sub)}
+            onBulkStageChange={handleBulkStageChange}
+          />
         )
       )}
 

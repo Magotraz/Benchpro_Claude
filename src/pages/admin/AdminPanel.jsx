@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation, Navigate } from 'react-router-dom'
-import { LayoutDashboard, Users, Globe, Mail, BarChart2, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Users, Globe, Mail, BarChart2, ShieldCheck, Shield } from 'lucide-react'
 
 const tabs = [
   { to: '/admin/overview',   label: 'Overview',   icon: LayoutDashboard },
@@ -7,6 +7,7 @@ const tabs = [
   { to: '/admin/clients',    label: 'Clients',    icon: Globe },
   { to: '/admin/invites',    label: 'Invites',    icon: Mail },
   { to: '/admin/analytics',  label: 'Analytics',  icon: BarChart2 },
+  { to: '/admin/audit-log',  label: 'Audit Log',  icon: Shield },
 ]
 
 export default function AdminPanel() {

@@ -27,10 +27,18 @@ function timeAgo(d) {
   return `${Math.floor(s / 86400)}d ago`
 }
 
-function Spinner() {
+function KpiSkeleton() {
   return (
-    <div className="flex justify-center py-12">
-      <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+    <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      {[1, 2, 3, 4].map(i => (
+        <div key={i} className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4 animate-pulse">
+          <div className="w-12 h-12 rounded-lg bg-gray-200 shrink-0" />
+          <div className="space-y-2 flex-1">
+            <div className="h-6 bg-gray-200 rounded w-1/2" />
+            <div className="h-3 bg-gray-100 rounded w-3/4" />
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -118,7 +126,7 @@ function AdminDashboard() {
     load()
   }, [])
 
-  if (loading) return <Spinner />
+  if (loading) return <KpiSkeleton />
 
   const month = new Date().toLocaleString('en-IN', { month: 'long' })
 
@@ -262,7 +270,7 @@ function RecruiterDashboard() {
     load()
   }, [user])
 
-  if (loading) return <Spinner />
+  if (loading) return <KpiSkeleton />
 
   const totalActive = PIPELINE_STAGES
     .filter(s => s.id !== 'placed')

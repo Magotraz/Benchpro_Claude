@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
-import { Plus, Mail, Phone, MapPin, Briefcase, Search, Edit2, Users } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Plus, Mail, Phone, MapPin, Briefcase, Search, Edit2, Users, Download, Upload, X, FileText } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { logAudit } from '../lib/audit'
 import Modal from '../components/Modal'
 
 const EMPTY = {
@@ -9,6 +10,9 @@ const EMPTY = {
   current_company: '', location: '', experience_years: '',
   skills: '', linkedin_url: '',
 }
+
+const ALLOWED_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+const MAX_SIZE_MB = 10
 
 function initials(name) {
   if (!name) return '?'
@@ -25,13 +29,66 @@ const BG_COLORS = [
 ]
 function avatarColor(id) { return BG_COLORS[(id?.charCodeAt(0) ?? 0) % BG_COLORS.length] }
 
+function exportCSV(candidates) {
+  const headers = ['Name', 'Email', 'Phone', 'Title', 'Company', 'Location', 'Experience (yrs)', 'Skills', 'LinkedIn']
+  const rows = candidates.map(c => [
+    c.full_name ?? '',
+    c.email ?? '',
+    c.phone ?? '',
+    c.current_title ?? '',
+    c.current_company ?? '',
+    c.location ?? '',
+    c.experience_years ?? '',
+    (c.skills ?? []).join('; '),
+    c.linkedin_url ?? '',
+  ])
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `benchpro-candidates-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+function Skeleton() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {[1, 2, 3].map(i => (
+        <div key={i} className="bg-white rounded-xl border border-gray-200 p-5 animate-pulse">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-full bg-gray-200" />
+            <div className="space-y-1.5 flex-1">
+              <div className="h-4 bg-gray-200 rounded w-3/4" />
+              <div className="h-3 bg-gray-100 rounded w-1/2" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="h-3 bg-gray-100 rounded w-2/3" />
+            <div className="h-3 bg-gray-100 rounded w-1/2" />
+          </div>
+          <div className="mt-3 flex gap-1">
+            <div className="h-5 w-16 bg-gray-100 rounded-full" />
+            <div className="h-5 w-20 bg-gray-100 rounded-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function Candidates() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
+  const fileRef = useRef(null)
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading]       = useState(true)
   const [search, setSearch]         = useState('')
-  const [modal, setModal]           = useState(null)
+  const [modal, setModal]           = useState(null)   // null | 'create' | candidate obj
   const [form, setForm]             = useState(EMPTY)
+  const [cvFile, setCvFile]         = useState(null)   // { file, name }
+  const [cvError, setCvError]       = useState('')
   const [saving, setSaving]         = useState(false)
   const [error, setError]           = useState('')
 
@@ -47,7 +104,7 @@ export default function Candidates() {
     setLoading(false)
   }
 
-  function openCreate() { setForm(EMPTY); setError(''); setModal('create') }
+  function openCreate() { setForm(EMPTY); setCvFile(null); setCvError(''); setError(''); setModal('create') }
   function openEdit(c) {
     setForm({
       full_name:        c.full_name ?? '',
@@ -60,22 +117,123 @@ export default function Candidates() {
       skills:           (c.skills ?? []).join(', '),
       linkedin_url:     c.linkedin_url ?? '',
     })
-    setError(''); setModal(c)
+    setCvFile(null); setCvError(''); setError(''); setModal(c)
+  }
+
+  function handleFileChange(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setCvError('Only PDF and Word (.docx) files are allowed.')
+      e.target.value = ''
+      return
+    }
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      setCvError(`File must be under ${MAX_SIZE_MB}MB.`)
+      e.target.value = ''
+      return
+    }
+    setCvError('')
+    setCvFile({ file, name: file.name })
+    e.target.value = ''
+  }
+
+  async function uploadCV(candidateId) {
+    if (!cvFile) return null
+    const ext  = cvFile.name.split('.').pop()
+    const path = `${candidateId}/${Date.now()}.${ext}`
+    const { error: upErr } = await supabase.storage
+      .from('candidate-resumes')
+      .upload(path, cvFile.file, { contentType: cvFile.file.type, upsert: true })
+    if (upErr) throw upErr
+    return { path, name: cvFile.name }
   }
 
   async function save(e) {
-    e.preventDefault(); setError(''); setSaving(true)
+    e.preventDefault()
+    setError('')
+    // CV required for new candidates
+    if (modal === 'create' && !cvFile) {
+      setCvError('A CV (PDF or Word) is required.')
+      return
+    }
+    setSaving(true)
     const payload = {
       ...form,
       skills:           skillsToArray(form.skills),
       experience_years: form.experience_years !== '' ? Number(form.experience_years) : null,
       updated_at:       new Date().toISOString(),
     }
-    const res = modal === 'create'
-      ? await supabase.from('candidates').insert({ ...payload, created_by: user.id })
-      : await supabase.from('candidates').update(payload).eq('id', modal.id)
-    if (res.error) { setError(res.error.message); setSaving(false); return }
+
+    if (modal === 'create') {
+      const { data, error: insErr } = await supabase
+        .from('candidates')
+        .insert({ ...payload, created_by: user.id })
+        .select()
+        .single()
+      if (insErr) { setError(insErr.message); setSaving(false); return }
+
+      // Upload CV
+      try {
+        const cv = await uploadCV(data.id)
+        if (cv) {
+          await supabase.from('candidates').update({
+            resume_url: cv.path, resume_filename: cv.name,
+          }).eq('id', data.id)
+        }
+      } catch (upErr) {
+        setError(`Candidate saved but CV upload failed: ${upErr.message}`)
+        setSaving(false); load(); return
+      }
+
+      logAudit({
+        userId:     user.id,
+        userName:   profile?.full_name ?? user.email,
+        action:     'created',
+        entityType: 'candidate',
+        entityId:   data.id,
+        entityName: data.full_name,
+      })
+    } else {
+      const { error: updErr } = await supabase
+        .from('candidates')
+        .update(payload)
+        .eq('id', modal.id)
+      if (updErr) { setError(updErr.message); setSaving(false); return }
+
+      if (cvFile) {
+        try {
+          const cv = await uploadCV(modal.id)
+          if (cv) {
+            await supabase.from('candidates').update({
+              resume_url: cv.path, resume_filename: cv.name,
+            }).eq('id', modal.id)
+          }
+        } catch (upErr) {
+          setError(`Candidate updated but CV upload failed: ${upErr.message}`)
+          setSaving(false); load(); return
+        }
+      }
+
+      logAudit({
+        userId:     user.id,
+        userName:   profile?.full_name ?? user.email,
+        action:     'updated',
+        entityType: 'candidate',
+        entityId:   modal.id,
+        entityName: form.full_name,
+      })
+    }
+
     setModal(null); load(); setSaving(false)
+  }
+
+  async function downloadCV(candidate) {
+    if (!candidate.resume_url) return
+    const { data } = await supabase.storage
+      .from('candidate-resumes')
+      .createSignedUrl(candidate.resume_url, 60)
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
   }
 
   function f(key) { return (e) => setForm(prev => ({ ...prev, [key]: e.target.value })) }
@@ -92,14 +250,16 @@ export default function Candidates() {
     )
   })
 
+  const inputCls = 'w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white'
+
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-gray-800">Candidates</h1>
           <p className="text-sm text-gray-500">{candidates.length} total</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -108,17 +268,32 @@ export default function Candidates() {
               className="pl-9 pr-3.5 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white w-52"
             />
           </div>
+          {filtered.length > 0 && (
+            <button
+              onClick={() => exportCSV(filtered)}
+              className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <Download size={14} /> Export CSV
+            </button>
+          )}
           <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg transition-colors shrink-0">
             <Plus size={16} /> Add Candidate
           </button>
         </div>
       </div>
 
-      {loading ? <Spinner /> : filtered.length === 0 ? (
+      {loading ? <Skeleton /> : filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 text-center py-16">
           <Users size={40} className="mx-auto text-gray-300 mb-3" />
-          <p className="font-medium text-gray-500">{search ? 'No results found' : 'No candidates yet'}</p>
-          {!search && <button onClick={openCreate} className="mt-4 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">Add Candidate</button>}
+          <p className="font-medium text-gray-500">{search ? `No results for "${search}"` : 'No candidates yet'}</p>
+          <p className="text-sm text-gray-400 mt-1">
+            {search ? 'Try different keywords.' : 'Add your first candidate to start building your talent pool.'}
+          </p>
+          {!search && (
+            <button onClick={openCreate} className="mt-4 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
+              Add Candidate
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -134,9 +309,20 @@ export default function Candidates() {
                     <p className="text-xs text-gray-500 truncate">{c.current_title || <span className="text-gray-300">No title</span>}</p>
                   </div>
                 </div>
-                <button onClick={() => openEdit(c)} className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors shrink-0">
-                  <Edit2 size={13} />
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  {c.resume_url && (
+                    <button
+                      onClick={() => downloadCV(c)}
+                      className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                      title="Download CV"
+                    >
+                      <FileText size={13} />
+                    </button>
+                  )}
+                  <button onClick={() => openEdit(c)} className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors">
+                    <Edit2 size={13} />
+                  </button>
+                </div>
               </div>
 
               {c.current_company && (
@@ -183,48 +369,83 @@ export default function Candidates() {
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Full Name <span className="text-red-500">*</span></label>
-                <input required value={form.full_name} onChange={f('full_name')} placeholder="Jane Doe"
-                  className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white" />
+                <input required value={form.full_name} onChange={f('full_name')} placeholder="Jane Doe" className={inputCls} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input type="email" value={form.email} onChange={f('email')} placeholder="jane@example.com"
-                  className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white" />
+                <input type="email" value={form.email} onChange={f('email')} placeholder="jane@example.com" className={inputCls} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                <input value={form.phone} onChange={f('phone')} placeholder="+91 98765 43210"
-                  className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white" />
+                <input value={form.phone} onChange={f('phone')} placeholder="+91 98765 43210" className={inputCls} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Current Title</label>
-                <input value={form.current_title} onChange={f('current_title')} placeholder="Senior Engineer"
-                  className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white" />
+                <input value={form.current_title} onChange={f('current_title')} placeholder="Senior Engineer" className={inputCls} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Current Company</label>
-                <input value={form.current_company} onChange={f('current_company')} placeholder="Acme Corp"
-                  className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white" />
+                <input value={form.current_company} onChange={f('current_company')} placeholder="Acme Corp" className={inputCls} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
-                <input value={form.location} onChange={f('location')} placeholder="Mumbai"
-                  className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white" />
+                <input value={form.location} onChange={f('location')} placeholder="Mumbai" className={inputCls} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Years of Experience</label>
-                <input type="number" min="0" step="0.5" value={form.experience_years} onChange={f('experience_years')} placeholder="5"
-                  className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white" />
+                <input type="number" min="0" step="0.5" value={form.experience_years} onChange={f('experience_years')} placeholder="5" className={inputCls} />
               </div>
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Skills <span className="text-gray-400 font-normal">(comma-separated)</span></label>
-                <input value={form.skills} onChange={f('skills')} placeholder="React, TypeScript, Node.js, AWS"
-                  className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white" />
+                <input value={form.skills} onChange={f('skills')} placeholder="React, TypeScript, Node.js, AWS" className={inputCls} />
               </div>
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">LinkedIn URL</label>
-                <input type="url" value={form.linkedin_url} onChange={f('linkedin_url')} placeholder="https://linkedin.com/in/…"
-                  className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white" />
+                <input type="url" value={form.linkedin_url} onChange={f('linkedin_url')} placeholder="https://linkedin.com/in/…" className={inputCls} />
+              </div>
+
+              {/* CV Upload */}
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  CV / Resume {modal === 'create' && <span className="text-red-500">*</span>}
+                  {modal !== 'create' && <span className="text-gray-400 font-normal">(leave blank to keep existing)</span>}
+                </label>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                {cvFile ? (
+                  <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                    <FileText size={16} className="text-emerald-600 shrink-0" />
+                    <p className="text-sm text-emerald-800 font-medium flex-1 truncate">{cvFile.name}</p>
+                    <button
+                      type="button"
+                      onClick={() => { setCvFile(null); setCvError('') }}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="w-full flex flex-col items-center gap-2 px-4 py-5 border-2 border-dashed border-gray-200 rounded-lg hover:border-brand-400 hover:bg-brand-50/30 transition-colors text-gray-500"
+                  >
+                    <Upload size={20} className="text-gray-400" />
+                    <span className="text-sm">Click to upload PDF or Word document</span>
+                    <span className="text-xs text-gray-400">Max {MAX_SIZE_MB}MB</span>
+                  </button>
+                )}
+                {cvError && <p className="mt-1.5 text-xs text-red-600">{cvError}</p>}
+                {modal !== 'create' && modal?.resume_filename && !cvFile && (
+                  <p className="mt-1.5 text-xs text-gray-500 flex items-center gap-1.5">
+                    <FileText size={11} /> Current: {modal.resume_filename}
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-1">
@@ -238,8 +459,4 @@ export default function Candidates() {
       )}
     </div>
   )
-}
-
-function Spinner() {
-  return <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>
 }

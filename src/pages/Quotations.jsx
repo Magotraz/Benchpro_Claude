@@ -1,10 +1,34 @@
 import { useState, useEffect } from 'react'
-import { Plus, ReceiptText, TrendingUp, IndianRupee } from 'lucide-react'
+import { Plus, ReceiptText, TrendingUp, IndianRupee, Download } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { createNotification } from '../lib/notifications'
+import { logAudit } from '../lib/audit'
 import { formatCurrency } from '../lib/utils'
 import Modal from '../components/Modal'
+
+function exportCSV(quotes) {
+  const headers = ['Quote #', 'Candidate', 'Job', 'Client', 'Fee Amount', 'Fee Type', 'Currency', 'Status', 'Created']
+  const rows = quotes.map(q => [
+    q.quote_number ?? '',
+    q.candidate_name ?? '',
+    q.jobs?.title ?? '',
+    q.profiles?.full_name ?? q.profiles?.email ?? '',
+    q.fee_amount ?? '',
+    q.fee_type ?? '',
+    q.currency ?? '',
+    q.status ?? '',
+    q.created_at ? new Date(q.created_at).toLocaleDateString('en-IN') : '',
+  ])
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `benchpro-quotations-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 const STATUS_COLORS = {
   draft:    'bg-gray-100 text-gray-600',
@@ -29,7 +53,7 @@ function calcFee(form) {
 }
 
 export default function Quotations() {
-  const { user }  = useAuth()
+  const { user, profile } = useAuth()
   const [quotes, setQuotes]   = useState([])
   const [jobs, setJobs]       = useState([])
   const [clients, setClients] = useState([])
@@ -99,6 +123,11 @@ export default function Quotations() {
     await supabase.from('quotations').update({ status: next, updated_at: new Date().toISOString() }).eq('id', q.id)
     setQuotes(prev => prev.map(x => x.id === q.id ? { ...x, status: next } : x))
     setAdvancing(null)
+    logAudit({
+      userId: user.id, userName: profile?.full_name ?? user.email,
+      action: 'updated', entityType: 'quotation', entityId: q.id,
+      entityName: q.quote_number, oldValue: q.status, newValue: next,
+    })
 
     const title = 'Quotation status updated'
     const body  = `${q.quote_number} moved to ${STATUS_LABELS[next]}`
@@ -139,14 +168,24 @@ export default function Quotations() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-gray-800">Quotations</h1>
           <p className="text-sm text-gray-500">{quotes.length} total</p>
         </div>
-        <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg transition-colors">
-          <Plus size={16} /> New Quotation
-        </button>
+        <div className="flex items-center gap-3">
+          {quotes.length > 0 && (
+            <button
+              onClick={() => exportCSV(quotes)}
+              className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <Download size={14} /> Export CSV
+            </button>
+          )}
+          <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg transition-colors">
+            <Plus size={16} /> New Quotation
+          </button>
+        </div>
       </div>
 
       {loading ? (

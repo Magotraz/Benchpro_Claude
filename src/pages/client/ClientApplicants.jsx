@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Star, Download, Users, Clock } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
+import { logAudit } from '../../lib/audit'
 
 function timeAgo(d) {
   const days = Math.floor((Date.now() - new Date(d)) / 86400000)
@@ -23,7 +24,7 @@ const VERDICT_GHOST = {
 }
 
 export default function ClientApplicants() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [apps, setApps]       = useState([])
   const [loading, setLoading] = useState(true)
   const [verdicts, setVerdicts] = useState({}) // { appId: verdict }
@@ -65,10 +66,17 @@ export default function ClientApplicants() {
   useEffect(() => { load() }, [load])
 
   async function setVerdict(appId, verdict) {
-    // Optimistic update
+    const old = verdicts[appId]
     setVerdicts(v => ({ ...v, [appId]: verdict }))
     setSaving(s => ({ ...s, [appId]: true }))
     await supabase.from('applications').update({ client_verdict: verdict }).eq('id', appId)
+    const app = apps.find(a => a.id === appId)
+    logAudit({
+      userId: user.id, userName: profile?.full_name ?? user.email,
+      action: 'feedback_submitted', entityType: 'application', entityId: appId,
+      entityName: app?.candidate_profiles?.full_name ?? 'Candidate',
+      oldValue: old ?? null, newValue: verdict,
+    })
     setSaving(s => ({ ...s, [appId]: false }))
   }
 

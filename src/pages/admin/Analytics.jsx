@@ -1,10 +1,34 @@
 import { useEffect, useState } from 'react'
 import {
   TrendingUp, Users, Mail, Globe, IndianRupee,
-  UserCheck, Clock, BarChart2,
+  UserCheck, Clock, BarChart2, Download,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../lib/utils'
+
+function exportRecruiterCSV(recruiters) {
+  const headers = ['Recruiter', 'Submissions', 'Placed', 'Rejected', 'Success Rate', 'Pipeline Value']
+  const rows = recruiters.map(r => {
+    const subs = Number(r.submissions ?? 0)
+    const placed = Number(r.placed ?? 0)
+    return [
+      r.recruiter_name ?? '',
+      subs,
+      placed,
+      Number(r.rejected ?? 0),
+      subs > 0 ? `${Math.round((placed / subs) * 100)}%` : '0%',
+      r.pipeline_value ?? 0,
+    ]
+  })
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `benchpro-recruiter-performance-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 // ── Stage config ─────────────────────────────────────────────────────────────
 const FUNNEL_STAGES = [
@@ -146,8 +170,21 @@ export default function Analytics() {
   }, [])
 
   if (loading) return (
-    <div className="flex justify-center py-12">
-      <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+    <div className="space-y-8 animate-pulse">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        {[1,2,3,4].map(i => (
+          <div key={i} className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-2">
+              <div className="h-3 bg-gray-200 rounded w-24" />
+              <div className="w-8 h-8 rounded-lg bg-gray-200" />
+            </div>
+            <div className="h-8 bg-gray-200 rounded w-16 mt-2" />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {[1,2].map(i => <div key={i} className="bg-white rounded-xl border border-gray-200 p-6 h-48" />)}
+      </div>
     </div>
   )
 
@@ -250,7 +287,20 @@ export default function Analytics() {
 
       {/* ── Recruiter performance ────────────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <SectionHeader title="Recruiter performance" sub="Submissions, placements, and pipeline value per recruiter" />
+        <div className="flex items-start justify-between gap-4 mb-5">
+          <div>
+            <h2 className="font-semibold text-gray-800">Recruiter performance</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Submissions, placements, and pipeline value per recruiter</p>
+          </div>
+          {d.recruiters.length > 0 && (
+            <button
+              onClick={() => exportRecruiterCSV(d.recruiters)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors shrink-0"
+            >
+              <Download size={12} /> Export CSV
+            </button>
+          )}
+        </div>
         {d.recruiters.length === 0 ? (
           <EmptyState message="No recruiter data yet." />
         ) : (
