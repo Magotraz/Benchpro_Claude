@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Plus, Mail, Phone, MapPin, Briefcase, Search, Edit2, Users, Download, X, FileText, CheckCircle } from 'lucide-react'
+import { Plus, Mail, Phone, MapPin, Briefcase, Search, Edit2, Users, Download, X, FileText, CheckCircle, Sparkles } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { logAudit } from '../lib/audit'
+import { extractTextFromFile, parseResumeText } from '../lib/resumeParser'
 import Modal from '../components/Modal'
 
 const EMPTY = {
@@ -203,6 +204,18 @@ function CvDropZone({ cvFile, onFile, onRemove, error, isEdit, existingFilename 
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+// ─── Auto-fill badge ──────────────────────────────────────────────────────────
+function AutoBadge({ show }) {
+  if (!show) return null
+  return (
+    <span className="inline-flex items-center gap-1 text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full ml-2 font-normal">
+      <Sparkles size={9} />Auto-filled
+    </span>
+  )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function Candidates() {
   const { user, profile } = useAuth()
   const [candidates, setCandidates] = useState([])
@@ -214,6 +227,9 @@ export default function Candidates() {
   const [cvError, setCvError]       = useState('')
   const [saving, setSaving]         = useState(false)
   const [error, setError]           = useState('')
+  // CV auto-fill
+  const [autoFilled, setAutoFilled]   = useState(new Set())   // field keys auto-populated
+  const [parseStatus, setParseStatus] = useState('idle')      // 'idle'|'parsing'|'success'|'error'
 
   useEffect(() => { load() }, [])
 
@@ -227,7 +243,12 @@ export default function Candidates() {
     setLoading(false)
   }
 
-  function openCreate() { setForm(EMPTY); setCvFile(null); setCvError(''); setError(''); setModal('create') }
+  function resetParseState() { setAutoFilled(new Set()); setParseStatus('idle') }
+
+  function openCreate() {
+    setForm(EMPTY); setCvFile(null); setCvError(''); setError('')
+    resetParseState(); setModal('create')
+  }
   function openEdit(c) {
     setForm({
       full_name:        c.full_name ?? '',
@@ -240,7 +261,47 @@ export default function Candidates() {
       skills:           (c.skills ?? []).join(', '),
       linkedin_url:     c.linkedin_url ?? '',
     })
-    setCvFile(null); setCvError(''); setError(''); setModal(c)
+    setCvFile(null); setCvError(''); setError('')
+    resetParseState(); setModal(c)
+  }
+
+  async function parseCv(file) {
+    setParseStatus('parsing')
+    setAutoFilled(new Set())
+    try {
+      const text = await extractTextFromFile(file)
+      if (!text || text.trim().length < 30) { setParseStatus('error'); return }
+
+      const parsed = parseResumeText(text)
+      const fieldMap = {
+        full_name:        parsed.name,
+        email:            parsed.email,
+        phone:            parsed.phone,
+        current_title:    parsed.currentTitle,
+        current_company:  parsed.currentCompany,
+        location:         parsed.location,
+        experience_years: parsed.experienceYears != null ? String(parsed.experienceYears) : null,
+        skills:           parsed.skills?.length > 0 ? parsed.skills.join(', ') : null,
+        linkedin_url:     parsed.linkedinUrl,
+      }
+
+      // Only populate empty fields — capture current form via functional update
+      const newFilled = new Set()
+      setForm(prev => {
+        const next = { ...prev }
+        for (const [key, val] of Object.entries(fieldMap)) {
+          if (val && !prev[key]) { next[key] = val; newFilled.add(key) }
+        }
+        return next
+      })
+      // Schedule status update after setForm flushes
+      Promise.resolve().then(() => {
+        setAutoFilled(new Set(newFilled))
+        setParseStatus(newFilled.size > 0 ? 'success' : 'idle')
+      })
+    } catch {
+      setParseStatus('error')
+    }
   }
 
   // Upload path: {recruiter_uid}/{candidate_id}_{timestamp}.{ext}
@@ -335,7 +396,12 @@ export default function Candidates() {
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
   }
 
-  function f(key) { return (e) => setForm(prev => ({ ...prev, [key]: e.target.value })) }
+  function f(key) {
+    return (e) => {
+      setForm(prev => ({ ...prev, [key]: e.target.value }))
+      if (autoFilled.has(key)) setAutoFilled(prev => { const s = new Set(prev); s.delete(key); return s })
+    }
+  }
 
   const filtered = candidates.filter(c => {
     if (!search) return true
@@ -467,50 +533,97 @@ export default function Candidates() {
           <form onSubmit={save} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Full Name <span className="text-red-500">*</span>
+                  <AutoBadge show={autoFilled.has('full_name')} />
+                </label>
                 <input required value={form.full_name} onChange={f('full_name')} placeholder="Jane Doe" className={inputCls} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email <AutoBadge show={autoFilled.has('email')} />
+                </label>
                 <input type="email" value={form.email} onChange={f('email')} placeholder="jane@example.com" className={inputCls} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone <AutoBadge show={autoFilled.has('phone')} />
+                </label>
                 <input value={form.phone} onChange={f('phone')} placeholder="+91 98765 43210" className={inputCls} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Current Title</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Current Title <AutoBadge show={autoFilled.has('current_title')} />
+                </label>
                 <input value={form.current_title} onChange={f('current_title')} placeholder="Senior Engineer" className={inputCls} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Current Company</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Current Company <AutoBadge show={autoFilled.has('current_company')} />
+                </label>
                 <input value={form.current_company} onChange={f('current_company')} placeholder="Acme Corp" className={inputCls} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Location <AutoBadge show={autoFilled.has('location')} />
+                </label>
                 <input value={form.location} onChange={f('location')} placeholder="Mumbai" className={inputCls} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Years of Experience</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Years of Experience <AutoBadge show={autoFilled.has('experience_years')} />
+                </label>
                 <input type="number" min="0" step="0.5" value={form.experience_years} onChange={f('experience_years')} placeholder="5" className={inputCls} />
               </div>
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Skills <span className="text-gray-400 font-normal">(comma-separated)</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Skills <span className="text-gray-400 font-normal">(comma-separated)</span>
+                  <AutoBadge show={autoFilled.has('skills')} />
+                </label>
                 <input value={form.skills} onChange={f('skills')} placeholder="React, TypeScript, Node.js, AWS" className={inputCls} />
               </div>
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">LinkedIn URL</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  LinkedIn URL <AutoBadge show={autoFilled.has('linkedin_url')} />
+                </label>
                 <input type="url" value={form.linkedin_url} onChange={f('linkedin_url')} placeholder="https://linkedin.com/in/…" className={inputCls} />
               </div>
 
               <CvDropZone
                 cvFile={cvFile}
-                onFile={(f, err) => { setCvFile(f); setCvError(err) }}
-                onRemove={() => { setCvFile(null); setCvError('') }}
+                onFile={(fileObj, err) => {
+                  setCvFile(fileObj); setCvError(err)
+                  if (fileObj && !err) parseCv(fileObj.file)
+                  else resetParseState()
+                }}
+                onRemove={() => { setCvFile(null); setCvError(''); resetParseState() }}
                 error={cvError}
                 isEdit={modal !== 'create'}
                 existingFilename={modal !== 'create' ? modal?.resume_filename : null}
               />
+
+              {/* CV parse status banner */}
+              {parseStatus !== 'idle' && (
+                <div className="col-span-2">
+                  {parseStatus === 'parsing' && (
+                    <div className="flex items-center gap-2.5 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
+                      <div className="w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                      Analysing CV…
+                    </div>
+                  )}
+                  {parseStatus === 'success' && (
+                    <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                      <Sparkles size={14} className="shrink-0" />
+                      CV analysed — please review and correct the fields below
+                    </div>
+                  )}
+                  {parseStatus === 'error' && (
+                    <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+                      Could not extract text from this CV — please fill in the fields manually
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 pt-1">
