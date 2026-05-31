@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { Plus, Mail, Phone, MapPin, Briefcase, Search, Edit2, Users, Download, Upload, X, FileText } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Plus, Mail, Phone, MapPin, Briefcase, Search, Edit2, Users, Download, X, FileText, CheckCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { logAudit } from '../lib/audit'
@@ -12,7 +12,8 @@ const EMPTY = {
 }
 
 const ALLOWED_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
-const MAX_SIZE_MB = 10
+const ALLOWED_EXTS  = ['.pdf', '.docx']
+const MAX_SIZE_MB   = 10
 
 function initials(name) {
   if (!name) return '?'
@@ -21,6 +22,11 @@ function initials(name) {
 
 function skillsToArray(str) {
   return str.split(',').map(s => s.trim()).filter(Boolean)
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 const BG_COLORS = [
@@ -79,15 +85,132 @@ function Skeleton() {
   )
 }
 
+// ─── CV Drop Zone ─────────────────────────────────────────────────────────────
+function CvDropZone({ cvFile, onFile, onRemove, error, isEdit, existingFilename }) {
+  const fileRef    = useRef(null)
+  const [dragging, setDragging] = useState(false)
+
+  function validate(file) {
+    if (!file) return null
+    if (!ALLOWED_TYPES.includes(file.type)) return 'Only PDF and Word (.docx) files are allowed.'
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) return `File must be under ${MAX_SIZE_MB}MB.`
+    return null
+  }
+
+  function processFile(file) {
+    const err = validate(file)
+    if (err) { onFile(null, err); return }
+    onFile({ file, name: file.name, size: file.size }, '')
+  }
+
+  function onInputChange(e) {
+    const file = e.target.files?.[0]
+    if (file) processFile(file)
+    e.target.value = ''
+  }
+
+  const onDragOver = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragging(true)
+  }, [])
+
+  const onDragLeave = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragging(false)
+  }, [])
+
+  const onDrop = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) processFile(file)
+  }, [])
+
+  return (
+    <div className="col-span-2">
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        CV / Resume {!isEdit && <span className="text-red-500">*</span>}
+        {isEdit && <span className="text-gray-400 font-normal"> (leave blank to keep existing)</span>}
+      </label>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept={ALLOWED_EXTS.join(',')}
+        onChange={onInputChange}
+        className="hidden"
+      />
+
+      {cvFile ? (
+        /* ── Uploaded state ── */
+        <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+          <CheckCircle size={16} className="text-emerald-500 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-emerald-800 truncate">{cvFile.name}</p>
+            <p className="text-xs text-emerald-600">{formatSize(cvFile.size)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors shrink-0"
+            title="Remove file"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      ) : (
+        /* ── Drop zone ── */
+        <div
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onDrop={onDrop}
+          onClick={() => fileRef.current?.click()}
+          className={`
+            w-full flex flex-col items-center gap-2 px-4 py-7 rounded-lg border-2 border-dashed
+            cursor-pointer transition-colors select-none
+            ${dragging
+              ? 'border-brand-500 bg-brand-50 text-brand-700'
+              : 'border-gray-200 hover:border-brand-400 hover:bg-brand-50/30 text-gray-500'
+            }
+          `}
+        >
+          <FileText size={22} className={dragging ? 'text-brand-500' : 'text-gray-300'} />
+          {dragging ? (
+            <p className="text-sm font-semibold">Drop to upload</p>
+          ) : (
+            <>
+              <p className="text-sm font-medium">Drag &amp; drop your CV here</p>
+              <p className="text-xs text-gray-400">or <span className="text-brand-600 underline underline-offset-2">click to browse</span></p>
+            </>
+          )}
+          <p className="text-xs text-gray-400">PDF or Word (.docx) · max {MAX_SIZE_MB}MB</p>
+        </div>
+      )}
+
+      {error && <p className="mt-1.5 text-xs text-red-600">{error}</p>}
+
+      {isEdit && existingFilename && !cvFile && (
+        <p className="mt-1.5 text-xs text-gray-500 flex items-center gap-1.5">
+          <FileText size={11} /> Current: {existingFilename}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function Candidates() {
   const { user, profile } = useAuth()
-  const fileRef = useRef(null)
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading]       = useState(true)
   const [search, setSearch]         = useState('')
   const [modal, setModal]           = useState(null)   // null | 'create' | candidate obj
   const [form, setForm]             = useState(EMPTY)
-  const [cvFile, setCvFile]         = useState(null)   // { file, name }
+  const [cvFile, setCvFile]         = useState(null)   // { file, name, size } | null
   const [cvError, setCvError]       = useState('')
   const [saving, setSaving]         = useState(false)
   const [error, setError]           = useState('')
@@ -120,28 +243,12 @@ export default function Candidates() {
     setCvFile(null); setCvError(''); setError(''); setModal(c)
   }
 
-  function handleFileChange(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      setCvError('Only PDF and Word (.docx) files are allowed.')
-      e.target.value = ''
-      return
-    }
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      setCvError(`File must be under ${MAX_SIZE_MB}MB.`)
-      e.target.value = ''
-      return
-    }
-    setCvError('')
-    setCvFile({ file, name: file.name })
-    e.target.value = ''
-  }
-
+  // Upload path: {recruiter_uid}/{candidate_id}_{timestamp}.{ext}
+  // Folder = recruiter's own UID so it matches the existing owner-folder RLS policy.
   async function uploadCV(candidateId) {
     if (!cvFile) return null
     const ext  = cvFile.name.split('.').pop()
-    const path = `${candidateId}/${Date.now()}.${ext}`
+    const path = `${user.id}/${candidateId}_${Date.now()}.${ext}`
     const { error: upErr } = await supabase.storage
       .from('candidate-resumes')
       .upload(path, cvFile.file, { contentType: cvFile.file.type, upsert: true })
@@ -152,7 +259,6 @@ export default function Candidates() {
   async function save(e) {
     e.preventDefault()
     setError('')
-    // CV required for new candidates
     if (modal === 'create' && !cvFile) {
       setCvError('A CV (PDF or Word) is required.')
       return
@@ -173,7 +279,6 @@ export default function Candidates() {
         .single()
       if (insErr) { setError(insErr.message); setSaving(false); return }
 
-      // Upload CV
       try {
         const cv = await uploadCV(data.id)
         if (cv) {
@@ -187,12 +292,9 @@ export default function Candidates() {
       }
 
       logAudit({
-        userId:     user.id,
-        userName:   profile?.full_name ?? user.email,
-        action:     'created',
-        entityType: 'candidate',
-        entityId:   data.id,
-        entityName: data.full_name,
+        userId: user.id, userName: profile?.full_name ?? user.email,
+        action: 'created', entityType: 'candidate',
+        entityId: data.id, entityName: data.full_name,
       })
     } else {
       const { error: updErr } = await supabase
@@ -216,12 +318,9 @@ export default function Candidates() {
       }
 
       logAudit({
-        userId:     user.id,
-        userName:   profile?.full_name ?? user.email,
-        action:     'updated',
-        entityType: 'candidate',
-        entityId:   modal.id,
-        entityName: form.full_name,
+        userId: user.id, userName: profile?.full_name ?? user.email,
+        action: 'updated', entityType: 'candidate',
+        entityId: modal.id, entityName: form.full_name,
       })
     }
 
@@ -404,50 +503,16 @@ export default function Candidates() {
                 <input type="url" value={form.linkedin_url} onChange={f('linkedin_url')} placeholder="https://linkedin.com/in/…" className={inputCls} />
               </div>
 
-              {/* CV Upload */}
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  CV / Resume {modal === 'create' && <span className="text-red-500">*</span>}
-                  {modal !== 'create' && <span className="text-gray-400 font-normal">(leave blank to keep existing)</span>}
-                </label>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-                {cvFile ? (
-                  <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg">
-                    <FileText size={16} className="text-emerald-600 shrink-0" />
-                    <p className="text-sm text-emerald-800 font-medium flex-1 truncate">{cvFile.name}</p>
-                    <button
-                      type="button"
-                      onClick={() => { setCvFile(null); setCvError('') }}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    className="w-full flex flex-col items-center gap-2 px-4 py-5 border-2 border-dashed border-gray-200 rounded-lg hover:border-brand-400 hover:bg-brand-50/30 transition-colors text-gray-500"
-                  >
-                    <Upload size={20} className="text-gray-400" />
-                    <span className="text-sm">Click to upload PDF or Word document</span>
-                    <span className="text-xs text-gray-400">Max {MAX_SIZE_MB}MB</span>
-                  </button>
-                )}
-                {cvError && <p className="mt-1.5 text-xs text-red-600">{cvError}</p>}
-                {modal !== 'create' && modal?.resume_filename && !cvFile && (
-                  <p className="mt-1.5 text-xs text-gray-500 flex items-center gap-1.5">
-                    <FileText size={11} /> Current: {modal.resume_filename}
-                  </p>
-                )}
-              </div>
+              <CvDropZone
+                cvFile={cvFile}
+                onFile={(f, err) => { setCvFile(f); setCvError(err) }}
+                onRemove={() => { setCvFile(null); setCvError('') }}
+                error={cvError}
+                isEdit={modal !== 'create'}
+                existingFilename={modal !== 'create' ? modal?.resume_filename : null}
+              />
             </div>
+
             <div className="flex justify-end gap-3 pt-1">
               <button type="button" onClick={() => setModal(null)} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>
               <button type="submit" disabled={saving} className="px-5 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition-colors disabled:opacity-60">
