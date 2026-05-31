@@ -1,10 +1,23 @@
+import { useState, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Briefcase, Users, FileText, ReceiptText,
   ChevronRight, LogOut, ShieldCheck, LayoutGrid, CalendarDays, ClipboardList,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase'
 import { ROLE_LABELS } from '../lib/auth'
+
+// super_recruiter sees Quotations; regular recruiter does not
+const superRecruiterNav = [
+  { to: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
+  { to: '/manage/jobs', label: 'Jobs',          icon: Briefcase },
+  { to: '/pipeline',    label: 'Pipeline',      icon: LayoutGrid },
+  { to: '/interviews',  label: 'Interviews',    icon: CalendarDays },
+  { to: '/candidates',  label: 'Candidates',    icon: Users },
+  { to: '/submissions', label: 'Submissions',   icon: FileText },
+  { to: '/quotations',  label: 'Quotations',    icon: ReceiptText },
+]
 
 const recruiterNav = [
   { to: '/dashboard',   label: 'Dashboard',    icon: LayoutDashboard },
@@ -13,7 +26,6 @@ const recruiterNav = [
   { to: '/interviews',  label: 'Interviews',    icon: CalendarDays },
   { to: '/candidates',  label: 'Candidates',    icon: Users },
   { to: '/submissions', label: 'Submissions',   icon: FileText },
-  { to: '/quotations',  label: 'Quotations',    icon: ReceiptText },
 ]
 
 const clientNav = [
@@ -31,9 +43,10 @@ const candidateNav = [
 ]
 
 function navForRole(role) {
-  if (role === 'client')    return clientNav
-  if (role === 'candidate') return candidateNav
-  return recruiterNav  // recruiter + super_recruiter
+  if (role === 'super_recruiter') return superRecruiterNav
+  if (role === 'client')          return clientNav
+  if (role === 'candidate')       return candidateNav
+  return recruiterNav
 }
 
 function initials(name) {
@@ -42,11 +55,22 @@ function initials(name) {
 }
 
 export default function Sidebar({ onClose }) {
-  const { profile, role, signOut } = useAuth()
+  const { profile, role, user, signOut } = useAuth()
   const navigate  = useNavigate()
   const location  = useLocation()
   const navItems  = navForRole(role)
   const adminActive = location.pathname.startsWith('/admin')
+
+  const [assignedCount, setAssignedCount] = useState(0)
+
+  useEffect(() => {
+    if (role !== 'recruiter' || !user) return
+    supabase
+      .from('job_assignments')
+      .select('job_id', { count: 'exact', head: true })
+      .eq('recruiter_id', user.id)
+      .then(({ count }) => setAssignedCount(count ?? 0))
+  }, [role, user?.id])
 
   async function handleSignOut() {
     await signOut()
@@ -72,28 +96,38 @@ export default function Sidebar({ onClose }) {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            onClick={handleNavClick}
-            className={({ isActive }) =>
-              `group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-brand-500 text-white'
-                  : 'text-indigo-200 hover:bg-white/10 hover:text-white'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <Icon size={18} className="shrink-0" />
-                <span className="flex-1">{label}</span>
-                {isActive && <ChevronRight size={14} className="opacity-70" />}
-              </>
-            )}
-          </NavLink>
-        ))}
+        {navItems.map(({ to, label, icon: Icon }) => {
+          const isJobsLink = to === '/manage/jobs' && role === 'recruiter'
+          const badge = isJobsLink && assignedCount > 0 ? assignedCount : null
+
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              onClick={handleNavClick}
+              className={({ isActive }) =>
+                `group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-brand-500 text-white'
+                    : 'text-indigo-200 hover:bg-white/10 hover:text-white'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <Icon size={18} className="shrink-0" />
+                  <span className="flex-1">{label}</span>
+                  {badge && !isActive && (
+                    <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-brand-400 text-white text-[10px] font-bold">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
+                  {isActive && <ChevronRight size={14} className="opacity-70" />}
+                </>
+              )}
+            </NavLink>
+          )
+        })}
 
         {role === 'super_recruiter' && (
           <div className="pt-3 mt-3 border-t border-white/10">

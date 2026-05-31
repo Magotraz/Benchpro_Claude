@@ -36,13 +36,14 @@ import ClientQuotations   from './pages/client/ClientQuotations'
 import ClientApplicants   from './pages/client/ClientApplicants'
 
 // Admin pages
-import AdminPanel  from './pages/admin/AdminPanel'
-import Overview    from './pages/admin/Overview'
-import Recruiters  from './pages/admin/Recruiters'
-import Clients     from './pages/admin/Clients'
-import Invites     from './pages/admin/Invites'
-import Analytics   from './pages/admin/Analytics'
-import AuditLog    from './pages/admin/AuditLog'
+import AdminPanel   from './pages/admin/AdminPanel'
+import Overview     from './pages/admin/Overview'
+import Recruiters   from './pages/admin/Recruiters'
+import Clients      from './pages/admin/Clients'
+import Invites      from './pages/admin/Invites'
+import Analytics    from './pages/admin/Analytics'
+import AuditLog     from './pages/admin/AuditLog'
+import Assignments  from './pages/admin/Assignments'
 
 // Other pages
 import NotFound from './pages/NotFound'
@@ -190,12 +191,13 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="overview"   element={<Overview />} />
-            <Route path="recruiters" element={<Recruiters />} />
-            <Route path="clients"    element={<Clients />} />
-            <Route path="invites"    element={<Invites />} />
-            <Route path="analytics"  element={<Analytics />} />
-            <Route path="audit-log"  element={<AuditLog />} />
+            <Route path="overview"     element={<Overview />} />
+            <Route path="recruiters"   element={<Recruiters />} />
+            <Route path="clients"      element={<Clients />} />
+            <Route path="invites"      element={<Invites />} />
+            <Route path="assignments"  element={<Assignments />} />
+            <Route path="analytics"    element={<Analytics />} />
+            <Route path="audit-log"    element={<AuditLog />} />
           </Route>
         </Route>
 

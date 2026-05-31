@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Briefcase, MapPin, Users, Edit2, ExternalLink, Globe, Inbox } from 'lucide-react'
+import { Plus, Briefcase, MapPin, Users, Edit2, ExternalLink, Globe, Inbox, Check, UserPlus } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -75,31 +75,126 @@ function SkillInput({ skills, onChange }) {
   )
 }
 
-export default function Jobs() {
+// ── Assign Recruiters Modal (super_recruiter only) ─────────────────────────────
+
+function AssignRecruitersModal({ job, recruiters, onClose }) {
   const { user } = useAuth()
+  const [assigned, setAssigned] = useState([])
+  const [loading, setLoading]   = useState(true)
+
+  useEffect(() => {
+    supabase
+      .from('job_assignments')
+      .select('recruiter_id')
+      .eq('job_id', job.id)
+      .then(({ data }) => {
+        setAssigned((data ?? []).map(a => a.recruiter_id))
+        setLoading(false)
+      })
+  }, [job.id])
+
+  async function toggle(recruiterId) {
+    const isAssigned = assigned.includes(recruiterId)
+    if (isAssigned) {
+      await supabase.from('job_assignments').delete().eq('job_id', job.id).eq('recruiter_id', recruiterId)
+      setAssigned(prev => prev.filter(id => id !== recruiterId))
+    } else {
+      await supabase.from('job_assignments').insert({ job_id: job.id, recruiter_id: recruiterId, assigned_by: user.id })
+      setAssigned(prev => [...prev, recruiterId])
+    }
+  }
+
+  return (
+    <Modal title={`Assign Recruiters — ${job.title}`} onClose={onClose}>
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : recruiters.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-8">
+          No recruiters yet. Invite recruiters from the Admin Panel.
+        </p>
+      ) : (
+        <div className="space-y-2 max-h-80 overflow-y-auto py-1">
+          {recruiters.map(r => {
+            const isAssigned = assigned.includes(r.id)
+            return (
+              <button
+                key={r.id}
+                onClick={() => toggle(r.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors text-left ${
+                  isAssigned
+                    ? 'border-brand-500 bg-brand-50'
+                    : 'border-gray-200 hover:border-brand-300 hover:bg-gray-50'
+                }`}
+              >
+                <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-xs font-bold text-brand-700 shrink-0 uppercase">
+                  {(r.full_name || r.email || '?')[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{r.full_name || r.email}</p>
+                  {r.full_name && <p className="text-xs text-gray-400 truncate">{r.email}</p>}
+                </div>
+                {isAssigned && <Check size={16} className="text-brand-600 shrink-0" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+      <div className="flex justify-between items-center pt-4 border-t border-gray-100 mt-4">
+        <p className="text-xs text-gray-400">{assigned.length} recruiter{assigned.length !== 1 ? 's' : ''} assigned</p>
+        <button
+          onClick={onClose}
+          className="px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition-colors"
+        >
+          Done
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
+export default function Jobs() {
+  const { user, isSuperRecruiter, role } = useAuth()
   const navigate  = useNavigate()
-  const [jobs, setJobs]       = useState([])
-  const [clients, setClients] = useState([])
+  const [jobs, setJobs]         = useState([])
+  const [clients, setClients]   = useState([])
+  const [recruiters, setRecruiters] = useState([])
   const [submCounts, setSubmCounts] = useState({})
-  const [loading, setLoading] = useState(true)
-  const [filter, setFilter]   = useState('all')
-  const [modal, setModal]     = useState(null)
-  const [form, setForm]       = useState(EMPTY)
-  const [saving, setSaving]   = useState(false)
-  const [error, setError]     = useState('')
-  const [appPanel, setAppPanel] = useState(null) // job for applications panel
+  const [loading, setLoading]   = useState(true)
+  const [filter, setFilter]     = useState('all')
+  const [modal, setModal]       = useState(null)
+  const [form, setForm]         = useState(EMPTY)
+  const [saving, setSaving]     = useState(false)
+  const [error, setError]       = useState('')
+  const [appPanel, setAppPanel] = useState(null)
+  const [assignJob, setAssignJob] = useState(null)
 
   useEffect(() => { loadAll() }, [])
 
   async function loadAll() {
     setLoading(true)
-    const [jobsRes, clientsRes, submRes] = await Promise.all([
+
+    const queries = [
       supabase.from('jobs').select('*, profiles!client_id(full_name, email)').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('id, full_name, email').eq('role', 'client'),
       supabase.from('submissions').select('job_id'),
-    ])
+    ]
+
+    if (isSuperRecruiter) {
+      queries.push(
+        supabase.from('profiles').select('id, full_name, email').eq('role', 'client'),
+        supabase.from('profiles').select('id, full_name, email').eq('role', 'recruiter').order('full_name'),
+      )
+    }
+
+    const [jobsRes, submRes, clientsRes, recruitersRes] = await Promise.all(queries)
+
     setJobs(jobsRes.data ?? [])
-    setClients(clientsRes.data ?? [])
+    setClients(clientsRes?.data ?? [])
+    setRecruiters(recruitersRes?.data ?? [])
+
     const counts = {}
     for (const s of submRes.data ?? []) {
       counts[s.job_id] = (counts[s.job_id] ?? 0) + 1
@@ -162,20 +257,25 @@ export default function Jobs() {
           <h1 className="text-xl font-bold text-gray-800">Jobs</h1>
           <p className="text-sm text-gray-500">
             {jobs.length} total · {jobs.filter(j => j.status === 'open').length} open
+            {!isSuperRecruiter && jobs.length > 0 && ' · assigned to you'}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            to="/jobs"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors"
-          >
-            <Globe size={14} /> Job Board
-          </Link>
-          <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg transition-colors">
-            <Plus size={16} /> New Job
-          </button>
+          {isSuperRecruiter && (
+            <>
+              <Link
+                to="/jobs"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors"
+              >
+                <Globe size={14} /> Job Board
+              </Link>
+              <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg transition-colors">
+                <Plus size={16} /> New Job
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -194,14 +294,14 @@ export default function Jobs() {
       </div>
 
       {loading ? <Spinner /> : filtered.length === 0 ? (
-        <EmptyState onNew={openCreate} />
+        <EmptyState onNew={isSuperRecruiter ? openCreate : null} isSuperRecruiter={isSuperRecruiter} />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100 text-left">
                 <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Job</th>
-                <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide hidden md:table-cell">Client</th>
+                {isSuperRecruiter && <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide hidden md:table-cell">Client</th>}
                 <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide hidden lg:table-cell">Location</th>
                 <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide hidden sm:table-cell">Type</th>
                 <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
@@ -215,7 +315,7 @@ export default function Jobs() {
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-2">
                       <p className="font-medium text-gray-800">{job.title}</p>
-                      {job.is_public && job.status === 'open' && job.slug && (
+                      {isSuperRecruiter && job.is_public && job.status === 'open' && job.slug && (
                         <Link
                           to={`/jobs/${job.slug}`}
                           target="_blank"
@@ -236,9 +336,11 @@ export default function Jobs() {
                       </p>
                     )}
                   </td>
-                  <td className="px-5 py-4 text-gray-500 hidden md:table-cell">
-                    {job.profiles?.full_name ?? job.profiles?.email ?? <span className="text-gray-300">—</span>}
-                  </td>
+                  {isSuperRecruiter && (
+                    <td className="px-5 py-4 text-gray-500 hidden md:table-cell">
+                      {job.profiles?.full_name ?? job.profiles?.email ?? <span className="text-gray-300">—</span>}
+                    </td>
+                  )}
                   <td className="px-5 py-4 hidden lg:table-cell">
                     {job.location
                       ? <span className="flex items-center gap-1 text-gray-500"><MapPin size={12} />{job.location}</span>
@@ -259,25 +361,36 @@ export default function Jobs() {
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-1 justify-end">
-                      <button
-                        onClick={() => setAppPanel(job)}
-                        title="Review applications"
-                        className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                      >
-                        <Inbox size={14} />
-                      </button>
+                      {isSuperRecruiter && (
+                        <>
+                          <button
+                            onClick={() => setAppPanel(job)}
+                            title="Review applications"
+                            className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                          >
+                            <Inbox size={14} />
+                          </button>
+                          <button
+                            onClick={() => setAssignJob(job)}
+                            title="Assign recruiters"
+                            className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                          >
+                            <UserPlus size={14} />
+                          </button>
+                          <button
+                            onClick={() => openEdit(job)}
+                            className="p-2 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                        </>
+                      )}
                       <button
                         onClick={() => navigate(`/pipeline?job=${job.id}`)}
                         title="Open pipeline"
                         className="p-2 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
                       >
                         <ExternalLink size={14} />
-                      </button>
-                      <button
-                        onClick={() => openEdit(job)}
-                        className="p-2 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
-                      >
-                        <Edit2 size={14} />
                       </button>
                     </div>
                   </td>
@@ -292,7 +405,15 @@ export default function Jobs() {
         <JobApplicationsPanel job={appPanel} onClose={() => setAppPanel(null)} />
       )}
 
-      {modal && (
+      {assignJob && (
+        <AssignRecruitersModal
+          job={assignJob}
+          recruiters={recruiters}
+          onClose={() => setAssignJob(null)}
+        />
+      )}
+
+      {modal && isSuperRecruiter && (
         <Modal title={modal === 'create' ? 'New Job' : 'Edit Job'} onClose={() => setModal(null)} wide>
           {error && <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
           <form onSubmit={save} className="space-y-4">
@@ -411,13 +532,24 @@ function Spinner() {
   return <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" /></div>
 }
 
-function EmptyState({ onNew }) {
+function EmptyState({ onNew, isSuperRecruiter }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 text-center py-16">
       <Briefcase size={40} className="mx-auto text-gray-300 mb-3" />
-      <p className="font-medium text-gray-500">No jobs yet</p>
-      <p className="text-sm text-gray-400 mt-1">Create your first job posting to get started.</p>
-      <button onClick={onNew} className="mt-4 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">New Job</button>
+      {isSuperRecruiter ? (
+        <>
+          <p className="font-medium text-gray-500">No jobs yet</p>
+          <p className="text-sm text-gray-400 mt-1">Create your first job posting to get started.</p>
+          {onNew && (
+            <button onClick={onNew} className="mt-4 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">New Job</button>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="font-medium text-gray-500">No assigned jobs</p>
+          <p className="text-sm text-gray-400 mt-1">Your manager will assign jobs to you. Check back soon.</p>
+        </>
+      )}
     </div>
   )
 }

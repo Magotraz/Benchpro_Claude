@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Briefcase, Users, FileText, IndianRupee,
   Plus, UserPlus, ReceiptText, Clock,
-  ChevronRight, Activity, LayoutGrid,
+  ChevronRight, Activity, LayoutGrid, MapPin,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -221,14 +221,23 @@ function AdminDashboard() {
   )
 }
 
+const JOB_STATUS_COLORS = {
+  open:    'bg-emerald-100 text-emerald-700',
+  draft:   'bg-gray-100 text-gray-500',
+  on_hold: 'bg-amber-100 text-amber-700',
+  closed:  'bg-red-100 text-red-600',
+}
+const JOB_STATUS_LABELS = { open: 'Open', draft: 'Draft', on_hold: 'On Hold', closed: 'Closed' }
+
 // ── RECRUITER DASHBOARD ───────────────────────────────────────────────────────
 function RecruiterDashboard() {
   const { user }  = useAuth()
   const navigate  = useNavigate()
-  const [stats, setStats]       = useState(null)
-  const [stageMap, setStageMap] = useState({})
-  const [activity, setActivity] = useState([])
-  const [loading, setLoading]   = useState(true)
+  const [stats, setStats]           = useState(null)
+  const [stageMap, setStageMap]     = useState({})
+  const [activity, setActivity]     = useState([])
+  const [assignedJobs, setAssignedJobs] = useState([])
+  const [loading, setLoading]       = useState(true)
 
   useEffect(() => {
     if (!user) return
@@ -237,10 +246,22 @@ function RecruiterDashboard() {
         new Date().getFullYear(), new Date().getMonth(), 1,
       ).toISOString()
 
-      const mySubsRes = await supabase
-        .from('submissions')
-        .select('id, stage, job_id, candidate_id, created_at')
-        .eq('submitted_by', user.id)
+      const [mySubsRes, actRes, assignedRes] = await Promise.all([
+        supabase
+          .from('submissions')
+          .select('id, stage, job_id, candidate_id, created_at')
+          .eq('submitted_by', user.id),
+        supabase
+          .from('submission_notes')
+          .select('content, type, created_at, submissions(candidates(full_name), jobs(title))')
+          .eq('author_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(5),
+        supabase
+          .from('job_assignments')
+          .select('jobs(id, title, location, status, employment_type)')
+          .eq('recruiter_id', user.id),
+      ])
 
       const mySubs = mySubsRes.data ?? []
       const sm = {}
@@ -250,13 +271,6 @@ function RecruiterDashboard() {
         mySubs.filter(s => !['rejected', 'placed'].includes(s.stage)).map(s => s.job_id),
       )
 
-      const actRes = await supabase
-        .from('submission_notes')
-        .select('content, type, created_at, submissions(candidates(full_name), jobs(title))')
-        .eq('author_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(5)
-
       setStats({
         activeJobs:          activeJobIds.size,
         candidates:          new Set(mySubs.map(s => s.candidate_id)).size,
@@ -265,6 +279,7 @@ function RecruiterDashboard() {
       })
       setStageMap(sm)
       setActivity(actRes.data ?? [])
+      setAssignedJobs((assignedRes.data ?? []).map(a => a.jobs).filter(Boolean))
       setLoading(false)
     }
     load()
@@ -352,6 +367,50 @@ function RecruiterDashboard() {
             emptyText="No activity yet. Add notes or move a candidate to see updates."
           />
         </div>
+      </div>
+
+      {/* Assigned jobs */}
+      <div className="bg-white rounded-xl border border-gray-200">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Briefcase size={15} className="text-brand-600" />
+            <h2 className="font-semibold text-gray-800">My Assigned Jobs</h2>
+          </div>
+          <button
+            onClick={() => navigate('/manage/jobs')}
+            className="text-xs text-brand-600 hover:text-brand-800 font-medium flex items-center gap-1 transition-colors"
+          >
+            View all <ChevronRight size={13} />
+          </button>
+        </div>
+        {assignedJobs.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-8">No jobs assigned yet. Your manager will assign jobs to you.</p>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {assignedJobs.map(job => (
+              <div key={job.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-gray-50">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{job.title}</p>
+                  {job.location && (
+                    <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                      <MapPin size={10} /> {job.location}
+                    </p>
+                  )}
+                </div>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${JOB_STATUS_COLORS[job.status] ?? 'bg-gray-100 text-gray-500'}`}>
+                  {JOB_STATUS_LABELS[job.status] ?? job.status}
+                </span>
+                <button
+                  onClick={() => navigate(`/pipeline?job=${job.id}`)}
+                  className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors shrink-0"
+                  title="Open pipeline"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
