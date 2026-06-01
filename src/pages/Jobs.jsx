@@ -178,7 +178,7 @@ export default function Jobs() {
     setLoading(true)
 
     const queries = [
-      supabase.from('jobs').select('*, profiles!client_id(full_name, email)').order('created_at', { ascending: false }),
+      supabase.from('jobs').select('*').order('created_at', { ascending: false }),
       supabase.from('submissions').select('job_id'),
     ]
 
@@ -249,6 +249,8 @@ export default function Jobs() {
   }
 
   const filtered = filter === 'all' ? jobs : jobs.filter(j => j.status === filter)
+
+  const clientMap = Object.fromEntries(clients.map(c => [c.id, c]))
 
   return (
     <div className="space-y-5">
@@ -338,7 +340,7 @@ export default function Jobs() {
                   </td>
                   {isSuperRecruiter && (
                     <td className="px-5 py-4 text-gray-500 hidden md:table-cell">
-                      {job.profiles?.full_name ?? job.profiles?.email ?? <span className="text-gray-300">—</span>}
+                      {clientMap[job.client_id]?.full_name ?? clientMap[job.client_id]?.email ?? <span className="text-gray-300">—</span>}
                     </td>
                   )}
                   <td className="px-5 py-4 hidden lg:table-cell">

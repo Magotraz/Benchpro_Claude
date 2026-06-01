@@ -42,17 +42,33 @@ export default function Assignments() {
 
   async function load() {
     setLoading(true)
+
+    // Fetch jobs without relying on PostgREST FK join (no FK constraint exists
+    // between jobs.client_id and profiles.id, so profiles!client_id returns null)
     const [jobsRes, assignRes, recRes, submRes] = await Promise.all([
       supabase
         .from('jobs')
-        .select('id, title, status, location, employment_type, client_id, created_at, profiles!client_id(full_name, email)')
+        .select('id, title, status, location, employment_type, client_id, created_at')
         .order('created_at', { ascending: false }),
       supabase.from('job_assignments').select('job_id, recruiter_id, assigned_at'),
       supabase.from('profiles').select('id, full_name, email').eq('role', 'recruiter').order('full_name'),
       supabase.from('submissions').select('job_id'),
     ])
 
-    setJobs(jobsRes.data ?? [])
+    const rawJobs = jobsRes.data ?? []
+
+    // Fetch client profiles separately using the actual client_id values
+    const clientIds = [...new Set(rawJobs.map(j => j.client_id).filter(Boolean))]
+    let clientMap = {}
+    if (clientIds.length > 0) {
+      const { data: clientProfiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', clientIds)
+      for (const p of clientProfiles ?? []) clientMap[p.id] = p
+    }
+
+    setJobs(rawJobs.map(j => ({ ...j, client: clientMap[j.client_id] ?? null })))
     setAssignments(assignRes.data ?? [])
     setRecruiters(recRes.data ?? [])
 
@@ -220,7 +236,7 @@ export default function Assignments() {
                   </tr>
                 ) : filtered.map(job => {
                   const isUnassigned = job.assigned.length === 0
-                  const clientName   = job.profiles?.full_name ?? job.profiles?.email ?? null
+                  const clientName   = job.client?.full_name ?? job.client?.email ?? null
 
                   return (
                     <tr
