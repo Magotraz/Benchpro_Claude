@@ -484,8 +484,13 @@ export default function Pipeline() {
 
   useEffect(() => {
     supabase.from('jobs').select('id, title, status').order('created_at', { ascending: false }).then(({ data }) => {
-      setJobs(data ?? [])
+      const list = data ?? []
+      setJobs(list)
       setLoadingJobs(false)
+      // Auto-select the first job when there's no job pre-selected via URL param
+      if (list.length > 0 && !searchParams.get('job')) {
+        setSelectedJobId(list[0].id)
+      }
     })
     supabase.from('candidates').select('id, full_name, current_title').order('full_name').then(({ data }) => {
       setCandidates(data ?? [])
@@ -645,9 +650,10 @@ export default function Pipeline() {
           <select
             value={selectedJobId}
             onChange={e => setSelectedJobId(e.target.value)}
-            className="px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white min-w-[220px]"
+            disabled={loadingJobs}
+            className={`px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white min-w-[220px] ${loadingJobs ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            <option value="">{view === 'table' ? 'All jobs' : 'Select a job…'}</option>
+            <option value="">{loadingJobs ? 'Loading jobs…' : (view === 'table' ? 'All jobs' : 'Select a job…')}</option>
             {jobs.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
           </select>
 
@@ -664,14 +670,26 @@ export default function Pipeline() {
 
       {/* Kanban view */}
       {view === 'kanban' && (
-        !selectedJobId ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <LayoutGrid size={48} className="mx-auto text-gray-200 mb-4" />
-              <p className="font-medium text-gray-500">Select a job to view its pipeline</p>
-              <p className="text-sm text-gray-400 mt-1">Choose from the dropdown above, or switch to Table view to see all candidates.</p>
+        loadingJobs ? (
+          <KanbanSkeleton />
+        ) : !selectedJobId ? (
+          jobs.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <LayoutGrid size={48} className="mx-auto text-gray-200 mb-4" />
+                <p className="font-medium text-gray-500">No jobs assigned yet</p>
+                <p className="text-sm text-gray-400 mt-1">Contact your admin to get assigned to a job.</p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <LayoutGrid size={48} className="mx-auto text-gray-200 mb-4" />
+                <p className="font-medium text-gray-500">Select a job to view its pipeline</p>
+                <p className="text-sm text-gray-400 mt-1">Choose from the dropdown above, or switch to Table view to see all candidates.</p>
+              </div>
+            </div>
+          )
         ) : loadingSubs ? (
           <KanbanSkeleton />
         ) : submissions.length === 0 ? (
