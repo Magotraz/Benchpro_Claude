@@ -184,7 +184,7 @@ export default function Jobs() {
 
     if (isSuperRecruiter) {
       queries.push(
-        supabase.from('profiles').select('id, full_name, email').eq('role', 'client'),
+        supabase.from('profiles').select('id, full_name, email, company_id').eq('role', 'client'),
         supabase.from('profiles').select('id, full_name, email').eq('role', 'recruiter').order('full_name'),
       )
     }
@@ -192,8 +192,28 @@ export default function Jobs() {
     const [jobsRes, submRes, clientsRes, recruitersRes] = await Promise.all(queries)
 
     setJobs(jobsRes.data ?? [])
-    setClients(clientsRes?.data ?? [])
     setRecruiters(recruitersRes?.data ?? [])
+
+    // Resolve company names: profiles.company_id → companies.name
+    // Display priority: company name > contact full_name > email username > 'Unknown Client'
+    const rawClients = clientsRes?.data ?? []
+    if (isSuperRecruiter && rawClients.length > 0) {
+      const companyIds = [...new Set(rawClients.map(c => c.company_id).filter(Boolean))]
+      let companyMap = {}
+      if (companyIds.length > 0) {
+        const { data: companies } = await supabase
+          .from('companies').select('id, name').in('id', companyIds)
+        for (const co of companies ?? []) companyMap[co.id] = co
+      }
+      setClients(rawClients.map(c => ({
+        ...c,
+        displayName: companyMap[c.company_id]?.name
+          || (c.full_name?.trim() || '')
+          || (c.email ? c.email.split('@')[0] : 'Unknown Client'),
+      })))
+    } else {
+      setClients(rawClients)
+    }
 
     const counts = {}
     for (const s of submRes.data ?? []) {
@@ -340,7 +360,7 @@ export default function Jobs() {
                   </td>
                   {isSuperRecruiter && (
                     <td className="px-5 py-4 text-gray-500 hidden md:table-cell">
-                      {clientMap[job.client_id]?.full_name ?? clientMap[job.client_id]?.email ?? <span className="text-gray-300">—</span>}
+                      {clientMap[job.client_id]?.displayName ?? <span className="text-gray-300">—</span>}
                     </td>
                   )}
                   <td className="px-5 py-4 hidden lg:table-cell">
@@ -463,7 +483,7 @@ export default function Jobs() {
                 <select value={form.client_id} onChange={field(setForm, 'client_id')}
                   className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white">
                   <option value="">No client</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.full_name || c.email}</option>)}
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.displayName || c.full_name || c.email}</option>)}
                 </select>
               </div>
 

@@ -57,15 +57,35 @@ export default function Assignments() {
 
     const rawJobs = jobsRes.data ?? []
 
-    // Fetch client profiles separately using the actual client_id values
+    // Fetch client profiles (with company_id) for the unique client_id values on jobs.
+    // jobs.client_id → profiles.id → profiles.company_id → companies.name
     const clientIds = [...new Set(rawJobs.map(j => j.client_id).filter(Boolean))]
     let clientMap = {}
     if (clientIds.length > 0) {
       const { data: clientProfiles } = await supabase
         .from('profiles')
-        .select('id, full_name, email')
+        .select('id, full_name, email, company_id')
         .in('id', clientIds)
-      for (const p of clientProfiles ?? []) clientMap[p.id] = p
+
+      // Resolve company names for any profiles that have a company_id
+      const companyIds = [...new Set((clientProfiles ?? []).map(p => p.company_id).filter(Boolean))]
+      let companyMap = {}
+      if (companyIds.length > 0) {
+        const { data: companies } = await supabase
+          .from('companies')
+          .select('id, name')
+          .in('id', companyIds)
+        for (const co of companies ?? []) companyMap[co.id] = co
+      }
+
+      for (const p of clientProfiles ?? []) {
+        clientMap[p.id] = {
+          ...p,
+          displayName: companyMap[p.company_id]?.name
+            || (p.full_name?.trim() || '')
+            || (p.email ? p.email.split('@')[0] : 'Unknown Client'),
+        }
+      }
     }
 
     setJobs(rawJobs.map(j => ({ ...j, client: clientMap[j.client_id] ?? null })))
@@ -236,7 +256,7 @@ export default function Assignments() {
                   </tr>
                 ) : filtered.map(job => {
                   const isUnassigned = job.assigned.length === 0
-                  const clientName   = job.client?.full_name ?? job.client?.email ?? null
+                  const clientName   = job.client?.displayName ?? null
 
                   return (
                     <tr
