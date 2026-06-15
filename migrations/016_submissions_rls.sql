@@ -7,80 +7,50 @@
 -- WHY
 -- ----
 -- Migration 015 locked the jobs SELECT policy to job_assignments, but
--- submissions and submission_notes still use the old permissive
--- "recruiters read/write everything" model. A recruiter could therefore
--- query submissions for jobs they are NOT assigned to. This migration
--- closes that gap to match the assignment-based model.
+-- submissions and submission_notes still carried blanket "recruiters full
+-- access" policies, so a recruiter could read/write submissions for jobs
+-- they were never assigned to. This migration closes that gap.
+--
+-- EXISTING POLICIES (confirmed via pg_policies) being replaced:
+--   submissions      → "recruiters full access submissions"  (FOR ALL,
+--                        qual: my_role() = ANY('{recruiter,super_recruiter}'))
+--   submission_notes → "recruiters full access notes"        (FOR ALL, same qual)
+-- KEPT, NOT TOUCHED:
+--   submissions      → "clients read submissions" (FOR SELECT, my_role()='client')
 --
 -- TARGET MODEL
 -- ------------
---   • super_recruiter → full access (UNCHANGED — its FOR ALL policy is kept)
+--   • super_recruiter → full access (via the my_role()='super_recruiter' OR-clause)
 --   • recruiter       → submissions (and their notes) ONLY for jobs assigned
 --                       to them via job_assignments, OR ones they created
---                       (submitted_by / author_id = auth.uid())
---   • client          → UNCHANGED (its own SELECT policy is not touched)
---   • candidates       → UNCHANGED (no submissions access)
---   • candidate pool   → UNCHANGED — candidate (candidates table) reads are a
---                       shared pool and are intentionally NOT restricted here.
+--                       (submitted_by = auth.uid())
+--   • client          → unchanged ("clients read submissions" left intact)
+--   • candidates       → unchanged (no submissions access)
+--   • candidate pool   → unchanged (candidates table reads are NOT restricted here)
 --
--- ⚠️  CONFIRM POLICY NAMES BEFORE RUNNING
--- ----------------------------------------
--- The original submissions / submission_notes policies were created directly
--- in the dashboard and are not in version control, so the DROP statements
--- below target this project's conventional names (see migration 011:
--- "recruiters_read_applications" / "recruiters_update_applications").
--- List the current policies first and adjust the DROPs if a permissive
--- recruiter SELECT/UPDATE/INSERT policy uses a different name:
---
---   SELECT tablename, policyname, cmd, roles, qual, with_check
---   FROM pg_policies
---   WHERE schemaname = 'public'
---     AND tablename IN ('submissions', 'submission_notes')
---   ORDER BY tablename, cmd, policyname;
---
--- DROP IF EXISTS is safe to re-run; an extra/legacy permissive recruiter
--- policy left behind would silently re-open access (permissive policies are
--- OR'd), so verify nothing recruiter-broad remains after running (see the
--- verification query at the bottom).
+-- submissions keeps a single FOR ALL replacement. submission_notes is split
+-- into per-command policies so that INSERT can additionally require
+-- author_id = auth.uid() (recruiters may only author notes as themselves) —
+-- a FOR ALL policy can't apply that to INSERT alone, and a looser FOR ALL
+-- alongside a FOR INSERT policy would OR away the guard.
 -- ============================================================
 
 ALTER TABLE public.submissions      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.submission_notes ENABLE ROW LEVEL SECURITY;
 
 -- ────────────────────────────────────────────────────────────
--- 1. submissions — replace permissive recruiter SELECT + UPDATE
+-- 1. submissions — replace the blanket recruiter policy
 -- ────────────────────────────────────────────────────────────
--- Drop the old permissive recruiter policies (adjust names per introspection).
-DROP POLICY IF EXISTS "recruiters_read_submissions"   ON public.submissions;
-DROP POLICY IF EXISTS "recruiters_select_submissions" ON public.submissions;
-DROP POLICY IF EXISTS "recruiters_view_submissions"   ON public.submissions;
-DROP POLICY IF EXISTS "recruiters_update_submissions" ON public.submissions;
+DROP POLICY IF EXISTS "recruiters full access submissions" ON public.submissions;
 
--- Recruiters may READ a submission only if super_recruiter, the creator,
--- or assigned to the submission's job.
-CREATE POLICY "recruiters_read_submissions" ON public.submissions
-  FOR SELECT TO authenticated
+-- Recruiters may operate on a submission only when super_recruiter, the
+-- creator, or assigned to the submission's job. FOR ALL → SELECT/INSERT/
+-- UPDATE/DELETE. "clients read submissions" is left untouched and continues
+-- to grant clients their SELECT access (permissive policies are OR'd).
+CREATE POLICY "recruiters access assigned submissions" ON public.submissions
+  FOR ALL TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = auth.uid() AND p.role = 'super_recruiter'
-    )
-    OR submitted_by = auth.uid()
-    OR EXISTS (
-      SELECT 1 FROM public.job_assignments ja
-      WHERE ja.job_id = submissions.job_id
-        AND ja.recruiter_id = auth.uid()
-    )
-  );
-
--- Recruiters may UPDATE (e.g. drag a card to a new stage) under the same rule.
-CREATE POLICY "recruiters_update_submissions" ON public.submissions
-  FOR UPDATE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = auth.uid() AND p.role = 'super_recruiter'
-    )
+    my_role() = 'super_recruiter'
     OR submitted_by = auth.uid()
     OR EXISTS (
       SELECT 1 FROM public.job_assignments ja
@@ -89,10 +59,7 @@ CREATE POLICY "recruiters_update_submissions" ON public.submissions
     )
   )
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = auth.uid() AND p.role = 'super_recruiter'
-    )
+    my_role() = 'super_recruiter'
     OR submitted_by = auth.uid()
     OR EXISTS (
       SELECT 1 FROM public.job_assignments ja
@@ -102,26 +69,23 @@ CREATE POLICY "recruiters_update_submissions" ON public.submissions
   );
 
 -- ────────────────────────────────────────────────────────────
--- 2. submission_notes — same scope, via the parent submission
+-- 2. submission_notes — replace the blanket recruiter policy
 -- ────────────────────────────────────────────────────────────
--- submission_notes are recruiter-internal: only recruiter pages
--- (Pipeline, InterviewCalendar via SubmissionDrawer) read/write them — no
--- client or candidate page touches this table — so scoping it to the
--- recruiter's accessible submissions does not affect other roles.
-DROP POLICY IF EXISTS "recruiters_read_submission_notes"   ON public.submission_notes;
-DROP POLICY IF EXISTS "recruiters_select_submission_notes" ON public.submission_notes;
-DROP POLICY IF EXISTS "recruiters_insert_submission_notes" ON public.submission_notes;
-DROP POLICY IF EXISTS "recruiters_write_submission_notes"  ON public.submission_notes;
-DROP POLICY IF EXISTS "recruiters_manage_submission_notes" ON public.submission_notes;
+-- Notes are recruiter-internal (only Pipeline / InterviewCalendar via
+-- SubmissionDrawer touch this table — no client/candidate page does), so
+-- gating them through the parent submission's accessibility is sufficient.
+-- Split per command: SELECT/UPDATE/DELETE use the parent-access check; INSERT
+-- additionally requires author_id = auth.uid().
+DROP POLICY IF EXISTS "recruiters full access notes" ON public.submission_notes;
 
--- READ notes only when the parent submission is accessible to this recruiter.
-CREATE POLICY "recruiters_read_submission_notes" ON public.submission_notes
+-- Parent-submission accessibility for the current recruiter, reused below:
+--   my_role() = 'super_recruiter'
+--   OR the parent submission was created by them
+--   OR the parent submission's job is assigned to them
+CREATE POLICY "recruiters read assigned submission notes" ON public.submission_notes
   FOR SELECT TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = auth.uid() AND p.role = 'super_recruiter'
-    )
+    my_role() = 'super_recruiter'
     OR EXISTS (
       SELECT 1 FROM public.submissions s
       WHERE s.id = submission_notes.submission_id
@@ -136,16 +100,65 @@ CREATE POLICY "recruiters_read_submission_notes" ON public.submission_notes
     )
   );
 
--- WRITE notes only as yourself, and only on an accessible parent submission.
-CREATE POLICY "recruiters_insert_submission_notes" ON public.submission_notes
+CREATE POLICY "recruiters update assigned submission notes" ON public.submission_notes
+  FOR UPDATE TO authenticated
+  USING (
+    my_role() = 'super_recruiter'
+    OR EXISTS (
+      SELECT 1 FROM public.submissions s
+      WHERE s.id = submission_notes.submission_id
+        AND (
+          s.submitted_by = auth.uid()
+          OR EXISTS (
+            SELECT 1 FROM public.job_assignments ja
+            WHERE ja.job_id = s.job_id
+              AND ja.recruiter_id = auth.uid()
+          )
+        )
+    )
+  )
+  WITH CHECK (
+    my_role() = 'super_recruiter'
+    OR EXISTS (
+      SELECT 1 FROM public.submissions s
+      WHERE s.id = submission_notes.submission_id
+        AND (
+          s.submitted_by = auth.uid()
+          OR EXISTS (
+            SELECT 1 FROM public.job_assignments ja
+            WHERE ja.job_id = s.job_id
+              AND ja.recruiter_id = auth.uid()
+          )
+        )
+    )
+  );
+
+CREATE POLICY "recruiters delete assigned submission notes" ON public.submission_notes
+  FOR DELETE TO authenticated
+  USING (
+    my_role() = 'super_recruiter'
+    OR EXISTS (
+      SELECT 1 FROM public.submissions s
+      WHERE s.id = submission_notes.submission_id
+        AND (
+          s.submitted_by = auth.uid()
+          OR EXISTS (
+            SELECT 1 FROM public.job_assignments ja
+            WHERE ja.job_id = s.job_id
+              AND ja.recruiter_id = auth.uid()
+          )
+        )
+    )
+  );
+
+-- INSERT: parent-submission access AND the note must be authored as the
+-- current user (recruiters can only create notes authored as themselves).
+CREATE POLICY "recruiters insert assigned submission notes" ON public.submission_notes
   FOR INSERT TO authenticated
   WITH CHECK (
     author_id = auth.uid()
     AND (
-      EXISTS (
-        SELECT 1 FROM public.profiles p
-        WHERE p.id = auth.uid() AND p.role = 'super_recruiter'
-      )
+      my_role() = 'super_recruiter'
       OR EXISTS (
         SELECT 1 FROM public.submissions s
         WHERE s.id = submission_notes.submission_id
@@ -162,9 +175,14 @@ CREATE POLICY "recruiters_insert_submission_notes" ON public.submission_notes
   );
 
 -- ────────────────────────────────────────────────────────────
--- 3. Verification (run after applying — should return ONLY the
---    policies created above plus untouched super_recruiter / client ones;
---    no leftover "recruiters read everything" policy should remain).
+-- 3. Verification (run after applying). Expect, per table:
+--    submissions      → "recruiters access assigned submissions" (ALL)
+--                       + "clients read submissions" (SELECT, untouched)
+--    submission_notes → "recruiters read assigned submission notes"   (SELECT)
+--                       "recruiters insert assigned submission notes" (INSERT)
+--                       "recruiters update assigned submission notes" (UPDATE)
+--                       "recruiters delete assigned submission notes" (DELETE)
+--    …and NO remaining "recruiters full access *" policy.
 -- ────────────────────────────────────────────────────────────
 -- SELECT tablename, policyname, cmd, roles, qual, with_check
 -- FROM pg_policies
