@@ -487,8 +487,13 @@ export default function Pipeline() {
       const list = data ?? []
       setJobs(list)
       setLoadingJobs(false)
-      // Auto-select the first job when there's no job pre-selected via URL param
-      if (list.length > 0 && !searchParams.get('job')) {
+      // Auto-select the first job by default. Also covers the case where a
+      // ?job= deep link points to a job this recruiter can no longer see
+      // (reassigned / cross-job notification link): if the URL job isn't in
+      // their assignment-scoped list, fall back to the first job instead of
+      // leaving selectedJobId on an unselectable id (which renders a blank board).
+      const urlJob = searchParams.get('job')
+      if (list.length > 0 && !list.some(j => j.id === urlJob)) {
         setSelectedJobId(list[0].id)
       }
     })
@@ -677,8 +682,8 @@ export default function Pipeline() {
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <LayoutGrid size={48} className="mx-auto text-gray-200 mb-4" />
-                <p className="font-medium text-gray-500">No jobs assigned yet</p>
-                <p className="text-sm text-gray-400 mt-1">Contact your admin to get assigned to a job.</p>
+                <p className="font-medium text-gray-500">No jobs assigned yet — contact your admin</p>
+                <p className="text-sm text-gray-400 mt-1">You'll see a pipeline here once you're assigned to a job.</p>
               </div>
             </div>
           ) : (
