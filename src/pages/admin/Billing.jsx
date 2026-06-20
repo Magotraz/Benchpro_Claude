@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Receipt, Pencil, CopyPlus, Trash2 } from 'lucide-react'
+import { Plus, Receipt, Pencil, CopyPlus, Trash2, FileDown, ListChecks, Building2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { calcBilling } from '../../lib/billingCalc'
+import { downloadInvoice } from '../../lib/invoicePdf'
 import Modal from '../../components/Modal'
+import BillingClients from './BillingClients'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -14,11 +16,11 @@ const CONTRACT_LABELS = {
 }
 
 const EMPTY = {
-  contractor_name: '', client_name: '', billing_month: '', contract_type: 'hourly',
+  contractor_name: '', client_id: '', client_name: '', billing_month: '', contract_type: 'hourly',
   bill_currency: 'USD',
   total_days: '', non_billable_days: '0', working_days: '',
   daily_hours: '', hourly_rate_usd: '', conversion_rate: '', monthly_fee_inr: '',
-  gst_rate: '18', tds_rate: '10',
+  gst_rate: '18', tds_rate: '10', hsn_sac: '998513',
   invoice_no: '', invoice_date: '', gstr1_filed_date: '', gstr3b_status: 'pending',
   payment_status: 'pending', amount_received: '', received_date: '', notes: '',
 }
@@ -61,17 +63,20 @@ const BADGE = {
 
 export default function Billing() {
   const { user } = useAuth()
+  const [view, setView]       = useState('records') // 'records' | 'clients'
   const [records, setRecords] = useState([])
+  const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal]     = useState(false)
   const [form, setForm]       = useState(EMPTY)
   const [editingId, setEditingId] = useState(null)
   const [saving, setSaving]   = useState(false)
+  const [generatingId, setGeneratingId] = useState(null)
   const [error, setError]     = useState('')
   const [fMonth, setFMonth]   = useState('')
   const [fClient, setFClient] = useState('')
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(); loadClients() }, [])
 
   async function load() {
     setLoading(true)
@@ -84,6 +89,16 @@ export default function Billing() {
     setLoading(false)
   }
 
+  async function loadClients() {
+    const { data } = await supabase
+      .from('billing_clients')
+      .select('*')
+      .order('client_name', { ascending: true })
+    setClients(data ?? [])
+  }
+
+  const clientById = useMemo(() => Object.fromEntries(clients.map(c => [c.id, c])), [clients])
+
   function openCreate() {
     setForm(EMPTY); setEditingId(null); setError(''); setModal(true)
   }
@@ -91,6 +106,7 @@ export default function Billing() {
   function openEdit(r) {
     setForm({
       contractor_name: r.contractor_name ?? '',
+      client_id:       r.client_id ?? '',
       client_name:     r.client_name ?? '',
       billing_month:   r.billing_month ? r.billing_month.slice(0, 7) : '',
       contract_type:   r.contract_type,
@@ -104,6 +120,7 @@ export default function Billing() {
       monthly_fee_inr:   r.monthly_fee_inr ?? '',
       gst_rate:          r.gst_rate ?? 18,
       tds_rate:          r.tds_rate ?? 10,
+      hsn_sac:           r.hsn_sac ?? '998513',
       invoice_no:        r.invoice_no ?? '',
       invoice_date:      r.invoice_date ?? '',
       gstr1_filed_date:  r.gstr1_filed_date ?? '',
@@ -120,6 +137,7 @@ export default function Billing() {
   function duplicate(r) {
     setForm({
       contractor_name: r.contractor_name ?? '',
+      client_id:       r.client_id ?? '',
       client_name:     r.client_name ?? '',
       billing_month:   nextMonth(r.billing_month ? r.billing_month.slice(0, 7) : ''),
       contract_type:   r.contract_type,
@@ -131,6 +149,7 @@ export default function Billing() {
       working_days:    r.working_days ?? '',
       gst_rate:        r.gst_rate ?? 18,
       tds_rate:        r.tds_rate ?? 10,
+      hsn_sac:         r.hsn_sac ?? '998513',
       // reset per-cycle
       total_days:        '',
       non_billable_days: '0',
@@ -161,6 +180,45 @@ export default function Billing() {
     setForm(f => ({ ...f, contract_type: ct, bill_currency: ct === 'hourly' ? 'USD' : 'INR' }))
   }
 
+  // Selecting a client stores client_id + display name and defaults the tax
+  // rates / HSN by the client's type. All remain editable afterwards.
+  function onClientChange(e) {
+    const id = e.target.value
+    const c  = clientById[id]
+    setForm(f => ({
+      ...f,
+      client_id:   id,
+      client_name: c?.client_name ?? '',
+      gst_rate:    c ? (c.is_overseas ? '0' : '18') : f.gst_rate,
+      tds_rate:    c ? (c.is_overseas ? '0' : '10') : f.tds_rate,
+      hsn_sac:     c?.default_hsn_sac ?? f.hsn_sac ?? '998513',
+    }))
+  }
+
+  function openClientManager() { setModal(false); setView('clients') }
+
+  // Whether a stored row can produce an invoice (linked client; domestic needs GSTIN).
+  function invoiceState(r) {
+    const c = r.client_id ? clientById[r.client_id] : null
+    if (!c) return { ok: false }
+    const overseas = c.is_overseas || Number(r.gst_rate) === 0
+    if (!overseas && !c.gstin) return { ok: false }
+    return { ok: true, client: c }
+  }
+
+  async function generate(r) {
+    const { ok, client } = invoiceState(r)
+    if (!ok) return
+    setGeneratingId(r.id); setError('')
+    try {
+      await downloadInvoice(r, client)
+    } catch (err) {
+      setError(`Failed to generate invoice: ${err.message}`)
+    } finally {
+      setGeneratingId(null)
+    }
+  }
+
   const computed = useMemo(() => calcBilling(form), [form])
 
   async function save(e) {
@@ -171,7 +229,9 @@ export default function Billing() {
 
     const payload = {
       contractor_name:   form.contractor_name,
+      client_id:         form.client_id || null,
       client_name:       form.client_name,
+      hsn_sac:           (form.hsn_sac && form.hsn_sac.trim()) || '998513',  // NOT NULL
       billing_month:     form.billing_month ? `${form.billing_month}-01` : null,
       contract_type:     form.contract_type,
       bill_currency:     form.bill_currency,
@@ -234,18 +294,34 @@ export default function Billing() {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">Billing</h1>
-          <p className="text-sm text-gray-500">{records.length} record{records.length === 1 ? '' : 's'}</p>
+        <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
+          <button
+            onClick={() => setView('records')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors ${view === 'records' ? 'bg-white text-brand-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            <ListChecks size={15} /> Records
+          </button>
+          <button
+            onClick={() => setView('clients')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors ${view === 'clients' ? 'bg-white text-brand-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            <Building2 size={15} /> Clients
+          </button>
         </div>
-        <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg transition-colors">
-          <Plus size={16} /> New Record
-        </button>
+        {view === 'records' && (
+          <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg transition-colors">
+            <Plus size={16} /> New Record
+          </button>
+        )}
       </div>
 
       {error && <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
 
+      {view === 'clients' && <BillingClients clients={clients} onChanged={loadClients} />}
+
       {/* Filters */}
+      {view === 'records' && (
+      <>
       {records.length > 0 && (
         <div className="flex items-center gap-3 flex-wrap">
           <select value={fMonth} onChange={e => setFMonth(e.target.value)} className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
@@ -284,6 +360,7 @@ export default function Billing() {
             <tbody className="divide-y divide-gray-100">
               {visible.map(r => {
                 const usd = r.bill_currency === 'USD'
+                const inv = invoiceState(r)
                 return (
                   <tr key={r.id} className="hover:bg-gray-50">
                     <td className="px-3 py-3 font-medium text-gray-800">{r.contractor_name}</td>
@@ -318,6 +395,16 @@ export default function Billing() {
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => generate(r)}
+                          disabled={!inv.ok || generatingId === r.id}
+                          title={inv.ok ? 'Generate Invoice' : 'Link a client (with GSTIN for domestic) to generate an invoice.'}
+                          className="p-1.5 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-400 disabled:cursor-not-allowed"
+                        >
+                          {generatingId === r.id
+                            ? <span className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin inline-block" />
+                            : <FileDown size={14} />}
+                        </button>
                         <button onClick={() => openEdit(r)} title="Edit" className="p-1.5 text-gray-400 hover:text-brand-700 hover:bg-brand-50 rounded-lg transition-colors"><Pencil size={14} /></button>
                         <button onClick={() => duplicate(r)} title="Duplicate to next month" className="p-1.5 text-gray-400 hover:text-brand-700 hover:bg-brand-50 rounded-lg transition-colors"><CopyPlus size={14} /></button>
                         <button onClick={() => remove(r)} title="Delete" className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14} /></button>
@@ -330,6 +417,8 @@ export default function Billing() {
           </table>
         </div>
       )}
+      </>
+      )}
 
       {modal && (
         <Modal title={editingId ? 'Edit Billing Record' : 'New Billing Record'} onClose={() => setModal(false)} wide>
@@ -341,8 +430,14 @@ export default function Billing() {
                 <input required value={form.contractor_name} onChange={setField('contractor_name')} placeholder="Jane Doe" className={inputCls} />
               </div>
               <div>
-                <label className={labelCls}>Client Name <span className="text-red-500">*</span></label>
-                <input required value={form.client_name} onChange={setField('client_name')} placeholder="Acme Corp" className={inputCls} />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-sm font-medium text-gray-700">Client <span className="text-red-500">*</span></label>
+                  <button type="button" onClick={openClientManager} className="text-xs text-brand-600 hover:text-brand-700 font-medium">Manage clients</button>
+                </div>
+                <select required value={form.client_id} onChange={onClientChange} className={inputCls}>
+                  <option value="">Select client…</option>
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
+                </select>
               </div>
               <div>
                 <label className={labelCls}>Billing Month <span className="text-red-500">*</span></label>
@@ -416,6 +511,10 @@ export default function Billing() {
                   <option value="0">0%</option>
                 </select>
               </div>
+              <div>
+                <label className={labelCls}>HSN/SAC</label>
+                <input value={form.hsn_sac} onChange={setField('hsn_sac')} placeholder="998513" className={inputCls} />
+              </div>
             </div>
 
             {/* Live computed block */}
@@ -478,6 +577,21 @@ export default function Billing() {
             </div>
 
             <div className="flex justify-end gap-3 pt-1">
+              {editingId && (() => {
+                const r = records.find(x => x.id === editingId)
+                const inv = r ? invoiceState(r) : { ok: false }
+                return (
+                  <button
+                    type="button"
+                    onClick={() => r && generate(r)}
+                    disabled={!r || !inv.ok || generatingId === editingId}
+                    title={inv.ok ? 'Generate Invoice (uses saved values)' : 'Link a client (with GSTIN for domestic) to generate an invoice.'}
+                    className="mr-auto flex items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <FileDown size={15} /> Generate Invoice
+                  </button>
+                )
+              })()}
               <button type="button" onClick={() => setModal(false)} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>
               <button type="submit" disabled={saving} className="px-5 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition-colors disabled:opacity-60">
                 {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Create Record'}
