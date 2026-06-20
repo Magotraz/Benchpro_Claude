@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation, Navigate } from 'react-router-dom'
-import { LayoutDashboard, Users, Globe, Mail, BarChart2, ShieldCheck, Shield, ClipboardList } from 'lucide-react'
+import { LayoutDashboard, Users, Globe, Mail, BarChart2, ShieldCheck, Shield, ClipboardList, Receipt } from 'lucide-react'
 
 const tabs = [
   { to: '/admin/overview',     label: 'Overview',     icon: LayoutDashboard },
@@ -8,6 +8,7 @@ const tabs = [
   { to: '/admin/invites',      label: 'Invites',      icon: Mail },
   { to: '/admin/assignments',  label: 'Assignments',  icon: ClipboardList },
   { to: '/admin/analytics',    label: 'Analytics',    icon: BarChart2 },
+  { to: '/admin/billing',      label: 'Billing',      icon: Receipt },
   { to: '/admin/audit-log',    label: 'Audit Log',    icon: Shield },
 ]
 

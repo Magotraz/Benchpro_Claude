@@ -44,6 +44,7 @@ import Invites      from './pages/admin/Invites'
 import Analytics    from './pages/admin/Analytics'
 import AuditLog     from './pages/admin/AuditLog'
 import Assignments  from './pages/admin/Assignments'
+import Billing       from './pages/admin/Billing'
 
 // Other pages
 import NotFound from './pages/NotFound'
@@ -197,6 +198,7 @@ export default function App() {
             <Route path="invites"      element={<Invites />} />
             <Route path="assignments"  element={<Assignments />} />
             <Route path="analytics"    element={<Analytics />} />
+            <Route path="billing"      element={<Billing />} />
             <Route path="audit-log"    element={<AuditLog />} />
           </Route>
         </Route>
