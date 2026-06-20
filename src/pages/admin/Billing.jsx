@@ -48,9 +48,9 @@ function toNum(v) {
 }
 
 const fmtINR = v => (v === null || v === undefined) ? '—'
-  : new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(v)
+  : new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v)
 const fmtUSD = v => (v === null || v === undefined) ? '—'
-  : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(v)
+  : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v)
 const fmtNum = v => (v === null || v === undefined || v === '') ? '—' : String(v)
 const fmtDate = v => v ? new Date(v).toLocaleDateString('en-IN') : '—'
 

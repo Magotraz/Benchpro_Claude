@@ -6,6 +6,13 @@
 //   fixed_monthly    → flat INR fee, unaffected by non-billable days
 //   monthly_prorated → INR fee prorated by billable_days / working_days
 
+// Money is rounded to whole numbers; each component is rounded BEFORE it feeds
+// the next step so totals tie out exactly.
+function roundMoney(n) {
+  return Math.round(Number(n) || 0)
+}
+
+// Hours are not money — keep 2-decimal precision.
 function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100
 }
@@ -36,11 +43,11 @@ export function calcBilling(input = {}) {
     const rateUsd    = num(input.hourly_rate_usd)
     const conversion = num(input.conversion_rate)
     totalHours = round2(billableDays * dailyHours)
-    totalUsd   = round2(totalHours * rateUsd)
-    inrTotal   = round2(totalUsd * conversion)
+    totalUsd   = roundMoney(totalHours * rateUsd)
+    inrTotal   = roundMoney(totalUsd * conversion)
   } else if (contractType === 'fixed_monthly') {
     // Flat fee — days do NOT change it.
-    inrTotal = round2(num(input.monthly_fee_inr))
+    inrTotal = roundMoney(num(input.monthly_fee_inr))
   } else if (contractType === 'monthly_prorated') {
     const monthlyFee  = num(input.monthly_fee_inr)
     const workingDays = num(input.working_days)
@@ -48,17 +55,17 @@ export function calcBilling(input = {}) {
       error    = 'Working days must be greater than 0 to prorate the monthly fee.'
       inrTotal = 0
     } else {
-      inrTotal = round2((monthlyFee * billableDays) / workingDays)
+      inrTotal = roundMoney((monthlyFee * billableDays) / workingDays)
     }
   }
 
   const gstRate = num(input.gst_rate)
   const tdsRate = num(input.tds_rate)
 
-  const gstAmount         = round2((gstRate / 100) * inrTotal)
-  const tdsAmount         = round2((tdsRate / 100) * inrTotal)
-  const totalInvoiceValue = round2(inrTotal + gstAmount)
-  const bankTransfer      = round2(totalInvoiceValue - tdsAmount)
+  const gstAmount         = roundMoney((gstRate / 100) * inrTotal)
+  const tdsAmount         = roundMoney((tdsRate / 100) * inrTotal)
+  const totalInvoiceValue = inrTotal + gstAmount
+  const bankTransfer      = totalInvoiceValue - tdsAmount
 
   return {
     billable_days:       billableDays,
