@@ -1,5 +1,6 @@
 // Static HIREF tax-invoice data for the Billing → Generate Invoice PDF (Phase 6.3).
 // No per-row/computed values here — those come from the billing_records row.
+import hirefLogo from '../assets/hiref-logo.png'
 
 const invoiceConfig = {
   seller: {
@@ -31,12 +32,10 @@ const invoiceConfig = {
   lutArn: 'REPLACE_WITH_LUT_ARN',      // Sachin will paste this
   overseasInvoiceCurrency: 'USD',      // "USD" or "INR"
 
-  // No HIREF logo image asset exists in the repo yet (the landing page uses a
-  // text wordmark). The PDF renders a styled text logo by default. To use a real
-  // logo, set `logoSrc` to an imported image (PNG/JPG) and InvoicePDF will render
-  // it instead of the text mark.
+  // Real HIREF logo (square PNG). InvoicePDF renders this top-left; the text
+  // "HIREF" mark is only used as a fallback when logoSrc is empty.
   logoText: 'HIREF',
-  logoSrc:  null,
+  logoSrc:  hirefLogo,
 }
 
 export default invoiceConfig

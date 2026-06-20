@@ -5,6 +5,7 @@ import { Document, Page, View, Text, Image, StyleSheet, pdf } from '@react-pdf/r
 import invoiceConfig from '../config/invoiceConfig'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const FULL_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 // Indian digit grouping, 2 decimals (e.g. 5,36,144.00). No currency symbol.
 function fmtAmt(n) {
@@ -19,11 +20,11 @@ function monthTag(dateStr) {
   return `${MONTHS[parseInt(m, 10) - 1]}-${y}`
 }
 
-// 'YYYY-MM-DD' → '15 May 2026'
+// 'YYYY-MM-DD' → 'May 15, 2026' (full month, zero-padded day)
 function fmtDate(dateStr) {
   if (!dateStr) return '—'
   const [y, m, d] = dateStr.split('-')
-  return `${parseInt(d, 10)} ${MONTHS[parseInt(m, 10) - 1]} ${y}`
+  return `${FULL_MONTHS[parseInt(m, 10) - 1]} ${d.padStart(2, '0')}, ${y}`
 }
 
 const styles = StyleSheet.create({
@@ -32,9 +33,9 @@ const styles = StyleSheet.create({
   spread: { flexDirection: 'row', justifyContent: 'space-between' },
 
   logoText: { fontSize: 26, fontFamily: 'Helvetica-Bold', color: '#4338ca', letterSpacing: 1 },
-  logoImg: { width: 120, height: 46, objectFit: 'contain' },
-  title: { fontSize: 18, fontFamily: 'Helvetica-Bold', textAlign: 'right' },
-  invoiceNo: { fontSize: 10, textAlign: 'right', marginTop: 2, color: '#374151' },
+  logoImg: { width: 120, height: 120, objectFit: 'contain' },
+  title: { fontSize: 24, fontFamily: 'Helvetica-Bold', textAlign: 'right', letterSpacing: 0.5 },
+  invoiceNo: { fontSize: 10, textAlign: 'right', marginTop: 3, color: '#374151' },
 
   hr: { borderBottomWidth: 1, borderBottomColor: '#d1d5db', marginVertical: 10 },
 
@@ -43,9 +44,14 @@ const styles = StyleSheet.create({
   bold: { fontFamily: 'Helvetica-Bold' },
   label: { fontSize: 8, color: '#6b7280', fontFamily: 'Helvetica-Bold', textTransform: 'uppercase' },
 
-  bankBox: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 3, padding: 7, width: 230 },
-  bankRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
-  bankKey: { color: '#6b7280' },
+  // Banking details — gridded two-column table with an outer border.
+  bankTable: { width: 252, borderWidth: 1, borderColor: '#9ca3af', borderRadius: 3, overflow: 'hidden' },
+  bankHeader: { backgroundColor: '#f3f4f6', borderBottomWidth: 1, borderBottomColor: '#9ca3af', paddingVertical: 4, paddingHorizontal: 6 },
+  bankHeaderText: { fontSize: 9.5, fontFamily: 'Helvetica-Bold' },
+  bankRow: { flexDirection: 'row' },
+  bankRowDivider: { borderBottomWidth: 1, borderBottomColor: '#d1d5db' },
+  bankLabel: { width: '42%', paddingVertical: 3, paddingHorizontal: 6, paddingRight: 8, borderRightWidth: 1, borderRightColor: '#d1d5db', fontSize: 8.5, color: '#374151', textAlign: 'left' },
+  bankValue: { width: '58%', paddingVertical: 3, paddingHorizontal: 6, fontSize: 8.5, textAlign: 'left' },
 
   sectionTitle: { fontSize: 9, fontFamily: 'Helvetica-Bold', marginBottom: 3 },
 
@@ -80,11 +86,26 @@ const styles = StyleSheet.create({
   footer: { position: 'absolute', left: 30, right: 30, bottom: 22, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#d1d5db', fontSize: 7.5, color: '#6b7280', textAlign: 'center', lineHeight: 1.4 },
 })
 
-function BankRow({ k, v }) {
+function BankingTable({ bank }) {
+  const rows = [
+    ['Beneficiary Name', bank.beneficiary],
+    ['Bank Name', bank.bankName],
+    ['Bank Address', bank.bankAddress],
+    ['Bank Account Number', bank.accountNumber],
+    ['SWIFT Code', bank.swift],
+    ['IFSC Code', bank.ifsc],
+  ]
   return (
-    <View style={styles.bankRow}>
-      <Text style={styles.bankKey}>{k}</Text>
-      <Text style={styles.bold}>{v}</Text>
+    <View style={styles.bankTable}>
+      <View style={styles.bankHeader}>
+        <Text style={styles.bankHeaderText}>Banking Details</Text>
+      </View>
+      {rows.map(([k, v], i) => (
+        <View key={k} style={[styles.bankRow, i < rows.length - 1 && styles.bankRowDivider]}>
+          <Text style={styles.bankLabel}>{k}</Text>
+          <Text style={styles.bankValue}>{v}</Text>
+        </View>
+      ))}
     </View>
   )
 }
@@ -129,15 +150,7 @@ export function InvoiceDocument({ row, client, config = invoiceConfig }) {
             <Text style={[styles.small, styles.bold, { marginTop: 3 }]}>GSTIN {config.sellerGstin}</Text>
           </View>
 
-          <View style={styles.bankBox}>
-            <Text style={[styles.sectionTitle, { marginBottom: 5 }]}>Banking Details</Text>
-            <BankRow k="Beneficiary"    v={config.bank.beneficiary} />
-            <BankRow k="Bank Name"      v={config.bank.bankName} />
-            <BankRow k="Bank Address"   v={config.bank.bankAddress} />
-            <BankRow k="Account Number" v={config.bank.accountNumber} />
-            <BankRow k="SWIFT"          v={config.bank.swift} />
-            <BankRow k="IFSC"           v={config.bank.ifsc} />
-          </View>
+          <BankingTable bank={config.bank} />
         </View>
 
         <View style={styles.hr} />
@@ -148,9 +161,9 @@ export function InvoiceDocument({ row, client, config = invoiceConfig }) {
             <Text style={styles.label}>Bill To:</Text>
             <Text style={[styles.small, styles.bold, { marginTop: 2 }]}>{client?.legal_name || client?.client_name || '—'}</Text>
             {addressLines.map((l, i) => <Text key={i} style={styles.small}>{l}</Text>)}
-            <Text style={styles.small}>
-              {[client?.city, client?.state, client?.country].filter(Boolean).join(', ')}
-            </Text>
+            {client?.city && <Text style={styles.small}>{client.city}</Text>}
+            {client?.state && <Text style={styles.small}>{client.state}</Text>}
+            {client?.country && <Text style={styles.small}>{client.country}</Text>}
             {client?.gstin && <Text style={[styles.small, styles.bold, { marginTop: 2 }]}>GSTIN {client.gstin}</Text>}
           </View>
           <View>
