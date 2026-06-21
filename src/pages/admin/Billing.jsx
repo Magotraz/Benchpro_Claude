@@ -412,8 +412,16 @@ export default function Billing() {
                     <td className="px-3 py-3 text-gray-600">{fmtINR(r.bank_transfer)}</td>
                     <td className="px-3 py-3 text-gray-500">{r.invoice_no || '—'}</td>
                     <td className="px-3 py-3 text-gray-500">{fmtDate(r.invoice_date)}</td>
-                    <td className={`px-3 py-3 ${r.gstr1_closed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{fmtDate(r.gstr1_filed_date)}</td>
-                    <td className={`px-3 py-3 ${r.gstr3b_closed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{fmtDate(r.gstr3b_filed_date)}</td>
+                    <td className="px-3 py-3">
+                      <span className={`px-2 py-0.5 rounded-full font-medium ${r.gstr1_closed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        {fmtDate(r.gstr1_filed_date)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={`px-2 py-0.5 rounded-full font-medium ${r.gstr3b_closed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        {fmtDate(r.gstr3b_filed_date)}
+                      </span>
+                    </td>
                     <td className="px-3 py-3">
                       <span className={`px-2 py-0.5 rounded-full font-medium ${(PAYMENT_BADGE[r.payment_status] ?? PAYMENT_BADGE.pending).cls}`}>
                         {(PAYMENT_BADGE[r.payment_status] ?? PAYMENT_BADGE.pending).label}
