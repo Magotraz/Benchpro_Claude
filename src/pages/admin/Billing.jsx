@@ -23,7 +23,8 @@ const EMPTY = {
   total_days: '', non_billable_days: '0', working_days: '',
   daily_hours: '', hourly_rate_usd: '', conversion_rate: '', monthly_fee_inr: '',
   gst_rate: '18', tds_rate: '10', hsn_sac: '998513',
-  invoice_no: '', invoice_date: '', gstr1_filed_date: '', gstr3b_status: 'pending',
+  invoice_no: '', invoice_date: '',
+  gstr1_filed_date: '', gstr1_closed: false, gstr3b_filed_date: '', gstr3b_closed: false,
   payment_status: 'pending', amount_received: '', received_date: '', notes: '',
 }
 
@@ -57,11 +58,6 @@ const fmtUSD = v => (v === null || v === undefined) ? '—'
   : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v)
 const fmtNum = v => (v === null || v === undefined || v === '') ? '—' : String(v)
 const fmtDate = v => v ? new Date(v).toLocaleDateString('en-IN') : '—'
-
-const BADGE = {
-  amber: 'bg-amber-100 text-amber-700',
-  green: 'bg-emerald-100 text-emerald-700',
-}
 
 export default function Billing() {
   const { user } = useAuth()
@@ -126,7 +122,9 @@ export default function Billing() {
       invoice_no:        r.invoice_no ?? '',
       invoice_date:      r.invoice_date ?? '',
       gstr1_filed_date:  r.gstr1_filed_date ?? '',
-      gstr3b_status:     r.gstr3b_status ?? 'pending',
+      gstr1_closed:      !!r.gstr1_closed,
+      gstr3b_filed_date: r.gstr3b_filed_date ?? '',
+      gstr3b_closed:     !!r.gstr3b_closed,
       payment_status:    r.payment_status ?? 'pending',
       amount_received:   r.amount_received ?? '',
       received_date:     r.received_date ?? '',
@@ -159,7 +157,9 @@ export default function Billing() {
       invoice_no:        '',
       invoice_date:      '',
       gstr1_filed_date:  '',
-      gstr3b_status:     'pending',
+      gstr1_closed:      false,
+      gstr3b_filed_date: '',
+      gstr3b_closed:     false,
       payment_status:    'pending',
       amount_received:   '',
       received_date:     '',
@@ -275,7 +275,9 @@ export default function Billing() {
       invoice_no:        form.invoice_no || null,
       invoice_date:      form.invoice_date || null,
       gstr1_filed_date:  form.gstr1_filed_date || null,
-      gstr3b_status:     form.gstr3b_status,
+      gstr1_closed:      form.gstr1_closed,
+      gstr3b_filed_date: form.gstr3b_filed_date || null,
+      gstr3b_closed:     form.gstr3b_closed,
       payment_status:    derivePaymentStatus(form.amount_received, exp.amount),
       amount_received:   toNum(form.amount_received),
       received_date:     form.received_date || null,
@@ -410,12 +412,8 @@ export default function Billing() {
                     <td className="px-3 py-3 text-gray-600">{fmtINR(r.bank_transfer)}</td>
                     <td className="px-3 py-3 text-gray-500">{r.invoice_no || '—'}</td>
                     <td className="px-3 py-3 text-gray-500">{fmtDate(r.invoice_date)}</td>
-                    <td className="px-3 py-3 text-gray-500">{fmtDate(r.gstr1_filed_date)}</td>
-                    <td className="px-3 py-3">
-                      <span className={`px-2 py-0.5 rounded-full font-medium ${r.gstr3b_status === 'filed' ? BADGE.green : BADGE.amber}`}>
-                        {r.gstr3b_status === 'filed' ? 'Filed' : 'Pending'}
-                      </span>
-                    </td>
+                    <td className={`px-3 py-3 ${r.gstr1_closed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{fmtDate(r.gstr1_filed_date)}</td>
+                    <td className={`px-3 py-3 ${r.gstr3b_closed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{fmtDate(r.gstr3b_filed_date)}</td>
                     <td className="px-3 py-3">
                       <span className={`px-2 py-0.5 rounded-full font-medium ${(PAYMENT_BADGE[r.payment_status] ?? PAYMENT_BADGE.pending).cls}`}>
                         {(PAYMENT_BADGE[r.payment_status] ?? PAYMENT_BADGE.pending).label}
@@ -574,14 +572,29 @@ export default function Billing() {
               </div>
               <div>
                 <label className={labelCls}>GSTR1 Filed Date</label>
-                <input type="date" value={form.gstr1_filed_date} onChange={setField('gstr1_filed_date')} className={inputCls} />
+                <div className="flex items-center gap-2">
+                  <input type="date" value={form.gstr1_filed_date} onChange={setField('gstr1_filed_date')} className={inputCls} />
+                  <input
+                    type="checkbox"
+                    aria-label="GSTR1 filed"
+                    checked={form.gstr1_closed}
+                    onChange={e => setForm(f => ({ ...f, gstr1_closed: e.target.checked }))}
+                    className="w-4 h-4 shrink-0 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                  />
+                </div>
               </div>
               <div>
-                <label className={labelCls}>GSTR3B Status</label>
-                <select value={form.gstr3b_status} onChange={setField('gstr3b_status')} className={inputCls}>
-                  <option value="pending">Pending</option>
-                  <option value="filed">Filed</option>
-                </select>
+                <label className={labelCls}>GSTR3B Filed Date</label>
+                <div className="flex items-center gap-2">
+                  <input type="date" value={form.gstr3b_filed_date} onChange={setField('gstr3b_filed_date')} className={inputCls} />
+                  <input
+                    type="checkbox"
+                    aria-label="GSTR3B filed"
+                    checked={form.gstr3b_closed}
+                    onChange={e => setForm(f => ({ ...f, gstr3b_closed: e.target.checked }))}
+                    className="w-4 h-4 shrink-0 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                  />
+                </div>
               </div>
               <div>
                 <label className={labelCls}>Amount Received ({formExpected.currency})</label>
