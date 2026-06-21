@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Receipt, Pencil, CopyPlus, Trash2, FileDown, ListChecks, Building2 } from 'lucide-react'
+import { Plus, Receipt, Pencil, CopyPlus, Trash2, FileDown, ListChecks, Building2, Wallet } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { calcBilling } from '../../lib/billingCalc'
 import { downloadInvoice } from '../../lib/invoicePdf'
+import { expectedFor, derivePaymentStatus, PAYMENT_BADGE, fmtMoney } from '../../lib/billingPayments'
 import Modal from '../../components/Modal'
 import BillingClients from './BillingClients'
+import BillingPayments from './BillingPayments'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -221,10 +223,28 @@ export default function Billing() {
 
   const computed = useMemo(() => calcBilling(form), [form])
 
+  // Derived payment status from amount_received vs expected (replaces the manual
+  // payment_status dropdown). Expected uses the LIVE computed values + client type.
+  const formClient   = form.client_id ? clientById[form.client_id] : null
+  const formExpected = expectedFor(
+    { gst_rate: form.gst_rate, total_usd: computed.total_usd, inr_total: computed.inr_total, bank_transfer: computed.bank_transfer },
+    formClient,
+  )
+  const derivedStatus = derivePaymentStatus(form.amount_received, formExpected.amount)
+
   async function save(e) {
     e.preventDefault(); setError('')
     const c = calcBilling(form)
     if (c.error) { setError(c.error); return }
+
+    const exp = expectedFor(
+      { gst_rate: form.gst_rate, total_usd: c.total_usd, inr_total: c.inr_total, bank_transfer: c.bank_transfer },
+      formClient,
+    )
+    const arNum = Number(form.amount_received) || 0
+    if (arNum > 0 && !form.received_date) {
+      setError('Enter the received date for the recorded payment.'); return
+    }
     setSaving(true)
 
     const payload = {
@@ -256,7 +276,7 @@ export default function Billing() {
       invoice_date:      form.invoice_date || null,
       gstr1_filed_date:  form.gstr1_filed_date || null,
       gstr3b_status:     form.gstr3b_status,
-      payment_status:    form.payment_status,
+      payment_status:    derivePaymentStatus(form.amount_received, exp.amount),
       amount_received:   toNum(form.amount_received),
       received_date:     form.received_date || null,
       notes:             form.notes || null,
@@ -302,6 +322,12 @@ export default function Billing() {
             <ListChecks size={15} /> Records
           </button>
           <button
+            onClick={() => setView('payments')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors ${view === 'payments' ? 'bg-white text-brand-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            <Wallet size={15} /> Payments
+          </button>
+          <button
             onClick={() => setView('clients')}
             className={`flex items-center gap-2 px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors ${view === 'clients' ? 'bg-white text-brand-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
@@ -318,6 +344,8 @@ export default function Billing() {
       {error && <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
 
       {view === 'clients' && <BillingClients clients={clients} onChanged={loadClients} />}
+
+      {view === 'payments' && <BillingPayments records={records} clients={clients} />}
 
       {/* Filters */}
       {view === 'records' && (
@@ -389,8 +417,8 @@ export default function Billing() {
                       </span>
                     </td>
                     <td className="px-3 py-3">
-                      <span className={`px-2 py-0.5 rounded-full font-medium ${r.payment_status === 'received' ? BADGE.green : BADGE.amber}`}>
-                        {r.payment_status === 'received' ? 'Received' : 'Pending'}
+                      <span className={`px-2 py-0.5 rounded-full font-medium ${(PAYMENT_BADGE[r.payment_status] ?? PAYMENT_BADGE.pending).cls}`}>
+                        {(PAYMENT_BADGE[r.payment_status] ?? PAYMENT_BADGE.pending).label}
                       </span>
                     </td>
                     <td className="px-3 py-3">
@@ -556,19 +584,21 @@ export default function Billing() {
                 </select>
               </div>
               <div>
-                <label className={labelCls}>Payment Status</label>
-                <select value={form.payment_status} onChange={setField('payment_status')} className={inputCls}>
-                  <option value="pending">Pending</option>
-                  <option value="received">Received</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>Amount Received (INR)</label>
+                <label className={labelCls}>Amount Received ({formExpected.currency})</label>
                 <input type="number" step="0.01" value={form.amount_received} onChange={setField('amount_received')} placeholder="0" className={inputCls} />
+                <p className="text-xs text-gray-400 mt-1">Expected: {fmtMoney(formExpected.amount, formExpected.currency)}</p>
               </div>
               <div>
-                <label className={labelCls}>Received Date</label>
-                <input type="date" value={form.received_date} onChange={setField('received_date')} className={inputCls} />
+                <label className={labelCls}>Received Date {Number(form.amount_received) > 0 && <span className="text-red-500">*</span>}</label>
+                <input type="date" required={Number(form.amount_received) > 0} value={form.received_date} onChange={setField('received_date')} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Payment Status (auto)</label>
+                <div className="px-1 py-2">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${PAYMENT_BADGE[derivedStatus].cls}`}>
+                    {PAYMENT_BADGE[derivedStatus].label}
+                  </span>
+                </div>
               </div>
               <div className="col-span-2">
                 <label className={labelCls}>Notes</label>
