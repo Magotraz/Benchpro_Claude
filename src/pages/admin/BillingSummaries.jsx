@@ -85,6 +85,8 @@ export default function BillingSummaries({ records }) {
 
   return (
     <div className="space-y-5">
+      <CashTrendChart records={records} />
+
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-1 flex-wrap">
           {SUBVIEWS.map(({ id, label, icon: Icon }) => (
@@ -244,6 +246,67 @@ function Card({ label, value }) {
     <div className="bg-white rounded-xl border border-gray-200 p-4">
       <p className="text-xs text-gray-400">{label}</p>
       <p className="text-lg font-bold text-gray-800 mt-1">{value}</p>
+    </div>
+  )
+}
+
+// ── Cash trend (bank-transfer basis, net of TDS) ───────────────────────────────
+// Stacked CSS bars (matching the Analytics chart style — no chart lib). INR only.
+function CashTrendChart({ records }) {
+  const data = useMemo(() => {
+    const map = new Map()
+    for (const r of records) {
+      const ym = r.billing_month ? r.billing_month.slice(0, 7) : null
+      if (!ym) continue
+      if (!map.has(ym)) map.set(ym, { received: 0, outstanding: 0 })
+      const bucket = map.get(ym)
+      bucket.received    += num(r.amount_received)
+      bucket.outstanding += Math.max(0, num(r.bank_transfer) - num(r.amount_received))
+    }
+    const months = [...map.keys()].sort()         // chronological
+    const last12 = months.slice(-12)
+    return last12.map(ym => ({ ym, ...map.get(ym), total: map.get(ym).received + map.get(ym).outstanding }))
+  }, [records])
+
+  const max = Math.max(1, ...data.map(d => d.total))
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h3 className="font-semibold text-gray-800">Cash by month</h3>
+          <p className="text-xs text-gray-400">Received vs outstanding, net of TDS (bank-transfer basis — not taxable revenue)</p>
+        </div>
+        <div className="flex items-center gap-4 text-xs">
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-500" /> Received</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400" /> Outstanding</span>
+        </div>
+      </div>
+
+      {data.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-10">No cash data yet.</p>
+      ) : (
+        <div className="mt-5 flex items-end gap-2 sm:gap-3 h-56">
+          {data.map(d => {
+            const totalPct = (d.total / max) * 100
+            const recPct   = d.total > 0 ? (d.received / d.total) * 100 : 0
+            const outPct   = d.total > 0 ? (d.outstanding / d.total) * 100 : 0
+            return (
+              <div key={d.ym} className="flex-1 flex flex-col items-center justify-end h-full min-w-0">
+                <div
+                  className="w-full max-w-[44px] flex flex-col justify-end rounded-md overflow-hidden"
+                  style={{ height: `${Math.max(totalPct, d.total > 0 ? 2 : 0)}%` }}
+                  title={`${formatMonth(d.ym)}\nReceived: ${fmtINR(d.received)}\nOutstanding: ${fmtINR(d.outstanding)}\nTotal billed: ${fmtINR(d.total)}`}
+                >
+                  <div className="bg-amber-400" style={{ height: `${outPct}%` }} />
+                  <div className="bg-emerald-500" style={{ height: `${recPct}%` }} />
+                </div>
+                <span className="mt-2 text-[10px] text-gray-400 whitespace-nowrap">{formatMonth(d.ym)}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Receipt, Pencil, CopyPlus, Trash2, FileDown, ListChecks, Building2, Wallet, BarChart3, Download } from 'lucide-react'
+import { Plus, Receipt, Pencil, CopyPlus, Trash2, FileDown, ListChecks, Building2, Wallet, BarChart3, Download, ShieldCheck } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { calcBilling } from '../../lib/billingCalc'
@@ -9,6 +9,7 @@ import Modal from '../../components/Modal'
 import BillingClients from './BillingClients'
 import BillingPayments from './BillingPayments'
 import BillingSummaries from './BillingSummaries'
+import BillingGst from './BillingGst'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -392,6 +393,12 @@ export default function Billing() {
             <BarChart3 size={15} /> Summaries
           </button>
           <button
+            onClick={() => setView('gst')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors ${view === 'gst' ? 'bg-white text-brand-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            <ShieldCheck size={15} /> GST Filing
+          </button>
+          <button
             onClick={() => setView('clients')}
             className={`flex items-center gap-2 px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors ${view === 'clients' ? 'bg-white text-brand-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
@@ -419,6 +426,8 @@ export default function Billing() {
       {view === 'payments' && <BillingPayments records={records} clients={clients} />}
 
       {view === 'summaries' && <BillingSummaries records={records} />}
+
+      {view === 'gst' && <BillingGst records={records} onChanged={load} />}
 
       {/* Filters */}
       {view === 'records' && (
