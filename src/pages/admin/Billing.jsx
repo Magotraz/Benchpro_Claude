@@ -3,7 +3,6 @@ import { Plus, Receipt, Pencil, CopyPlus, Trash2, FileDown, ListChecks, Building
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { calcBilling } from '../../lib/billingCalc'
-import { downloadInvoice } from '../../lib/invoicePdf'
 import { expectedFor, derivePaymentStatus, PAYMENT_BADGE, fmtMoney } from '../../lib/billingPayments'
 import Modal from '../../components/Modal'
 import BillingClients from './BillingClients'
@@ -263,6 +262,9 @@ export default function Billing() {
     if (!ok) return
     setGeneratingId(r.id); setError('')
     try {
+      // Lazy-load the heavy PDF lib (@react-pdf/renderer) only on demand so it
+      // stays out of the main bundle for everyone who never generates invoices.
+      const { downloadInvoice } = await import('../../lib/invoicePdf')
       await downloadInvoice(r, client)
     } catch (err) {
       setError(`Failed to generate invoice: ${err.message}`)
@@ -757,7 +759,9 @@ export default function Billing() {
                     title={inv.ok ? 'Generate Invoice (uses saved values)' : 'Link a client (with GSTIN for domestic) to generate an invoice.'}
                     className="mr-auto flex items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <FileDown size={15} /> Generate Invoice
+                    {generatingId === editingId
+                      ? <><span className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" /> Generating…</>
+                      : <><FileDown size={15} /> Generate Invoice</>}
                   </button>
                 )
               })()}
