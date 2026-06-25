@@ -11,16 +11,27 @@ import BillingPayments from './BillingPayments'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-const CONTRACT_LABELS = {
-  hourly:           'Hourly',
-  fixed_monthly:    'Fixed Monthly',
-  monthly_prorated: 'Monthly (Prorated)',
+const BASIS_LABELS = {
+  hourly:        'Hourly',
+  fixed_hours:   'Fixed Hours',
+  fixed_monthly: 'Fixed Monthly',
+  prorated:      'Prorated',
+}
+
+// The legacy contract_type column is NOT NULL with a check constraint and is no
+// longer surfaced in the UI — but inserts must still write a valid value. Map the
+// new calc_basis onto the nearest legal legacy value.
+const LEGACY_CONTRACT_TYPE = {
+  hourly:        'hourly',
+  fixed_hours:   'hourly',
+  fixed_monthly: 'fixed_monthly',
+  prorated:      'monthly_prorated',
 }
 
 const EMPTY = {
-  contractor_name: '', client_id: '', client_name: '', billing_month: '', contract_type: 'hourly',
-  bill_currency: 'USD',
-  total_days: '', non_billable_days: '0', working_days: '',
+  contractor_name: '', client_id: '', client_name: '', billing_month: '',
+  calc_basis: 'hourly', rate_currency: 'USD',
+  total_days: '', non_billable_days: '0', working_days: '', fixed_hours: '',
   daily_hours: '', hourly_rate_usd: '', conversion_rate: '', monthly_fee_inr: '',
   gst_rate: '18', tds_rate: '10', hsn_sac: '998513',
   invoice_no: '', invoice_date: '',
@@ -107,11 +118,12 @@ export default function Billing() {
       client_id:       r.client_id ?? '',
       client_name:     r.client_name ?? '',
       billing_month:   r.billing_month ? r.billing_month.slice(0, 7) : '',
-      contract_type:   r.contract_type,
-      bill_currency:   r.bill_currency,
+      calc_basis:      r.calc_basis ?? 'hourly',
+      rate_currency:   r.rate_currency ?? 'USD',
       total_days:        r.total_days ?? '',
       non_billable_days: r.non_billable_days ?? 0,
       working_days:      r.working_days ?? '',
+      fixed_hours:       r.fixed_hours ?? '',
       daily_hours:       r.daily_hours ?? '',
       hourly_rate_usd:   r.hourly_rate_usd ?? '',
       conversion_rate:   r.conversion_rate ?? '',
@@ -140,13 +152,14 @@ export default function Billing() {
       client_id:       r.client_id ?? '',
       client_name:     r.client_name ?? '',
       billing_month:   nextMonth(r.billing_month ? r.billing_month.slice(0, 7) : ''),
-      contract_type:   r.contract_type,
-      bill_currency:   r.bill_currency,
+      calc_basis:      r.calc_basis ?? 'hourly',
+      rate_currency:   r.rate_currency ?? 'USD',
       // kept rates
       daily_hours:     r.daily_hours ?? '',
       hourly_rate_usd: r.hourly_rate_usd ?? '',
       monthly_fee_inr: r.monthly_fee_inr ?? '',
       working_days:    r.working_days ?? '',
+      fixed_hours:     r.fixed_hours ?? '',
       gst_rate:        r.gst_rate ?? 18,
       tds_rate:        r.tds_rate ?? 10,
       hsn_sac:         r.hsn_sac ?? '998513',
@@ -177,10 +190,9 @@ export default function Billing() {
 
   function setField(key) { return (e) => setForm(f => ({ ...f, [key]: e.target.value })) }
 
-  function onContractTypeChange(e) {
-    const ct = e.target.value
-    setForm(f => ({ ...f, contract_type: ct, bill_currency: ct === 'hourly' ? 'USD' : 'INR' }))
-  }
+  // calc_basis and rate_currency are independent levers.
+  function setBasis(e)        { const v = e.target.value; setForm(f => ({ ...f, calc_basis: v })) }
+  function setRateCurrency(c) { setForm(f => ({ ...f, rate_currency: c })) }
 
   // Selecting a client stores client_id + display name and defaults the tax
   // rates / HSN by the client's type. All remain editable afterwards.
@@ -253,11 +265,14 @@ export default function Billing() {
       client_name:       form.client_name,
       hsn_sac:           (form.hsn_sac && form.hsn_sac.trim()) || '998513',  // NOT NULL
       billing_month:     form.billing_month ? `${form.billing_month}-01` : null,
-      contract_type:     form.contract_type,
-      bill_currency:     form.bill_currency,
+      calc_basis:        form.calc_basis,
+      rate_currency:     form.rate_currency,
+      contract_type:     LEGACY_CONTRACT_TYPE[form.calc_basis] ?? 'hourly',  // legacy NOT NULL col
+      bill_currency:     form.rate_currency,                                  // legacy NOT NULL col
       total_days:        toNum(form.total_days),
       non_billable_days: toNum(form.non_billable_days) ?? 0,
       working_days:      toNum(form.working_days),
+      fixed_hours:       toNum(form.fixed_hours),
       daily_hours:       toNum(form.daily_hours),
       hourly_rate_usd:   toNum(form.hourly_rate_usd),
       conversion_rate:   toNum(form.conversion_rate),
@@ -309,9 +324,13 @@ export default function Billing() {
     (!fClient || r.client_name === fClient),
   )
 
-  const isHourly   = form.contract_type === 'hourly'
-  const isProrated = form.contract_type === 'monthly_prorated'
-  const showFee    = form.contract_type === 'fixed_monthly' || isProrated
+  const isHourly     = form.calc_basis === 'hourly'
+  const isFixedHours = form.calc_basis === 'fixed_hours'
+  const isProrated   = form.calc_basis === 'prorated'
+  const isFee        = form.calc_basis === 'fixed_monthly' || isProrated
+  const isHourlyLike = isHourly || isFixedHours
+  const rateIsUSD    = form.rate_currency === 'USD'
+  const rateSym      = rateIsUSD ? '$' : '₹'
 
   return (
     <div className="space-y-5">
@@ -381,7 +400,7 @@ export default function Billing() {
           <table className="w-full text-xs whitespace-nowrap">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100 text-left">
-                {['Contractor', 'Client', 'Month', 'Type', 'Cur', 'Bill Days', 'Hours', 'Rate (USD)', 'Conv', 'Total USD', 'INR Total', 'GST %', 'GST Amt', 'TDS %', 'TDS Amt', 'Invoice Val', 'Bank Transfer', 'Invoice #', 'Inv Date', 'GSTR1', 'GSTR3B', 'Payment'].map(h => (
+                {['Contractor', 'Client', 'Month', 'Basis', 'Cur', 'Bill Days', 'Hours', 'Rate (USD)', 'Conv', 'Total USD', 'INR Total', 'GST %', 'GST Amt', 'TDS %', 'TDS Amt', 'Invoice Val', 'Bank Transfer', 'Invoice #', 'Inv Date', 'GSTR1', 'GSTR3B', 'Payment'].map(h => (
                   <th key={h} className="px-3 py-3 font-medium text-gray-500 uppercase tracking-wide">{h}</th>
                 ))}
                 <th className="px-3 py-3"></th>
@@ -389,15 +408,15 @@ export default function Billing() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {visible.map(r => {
-                const usd = r.bill_currency === 'USD'
+                const usd = r.rate_currency === 'USD'
                 const inv = invoiceState(r)
                 return (
                   <tr key={r.id} className="hover:bg-gray-50">
                     <td className="px-3 py-3 font-medium text-gray-800">{r.contractor_name}</td>
                     <td className="px-3 py-3 text-gray-600">{r.client_name}</td>
                     <td className="px-3 py-3 text-gray-600">{formatMonth(r.billing_month)}</td>
-                    <td className="px-3 py-3 text-gray-500">{CONTRACT_LABELS[r.contract_type] ?? r.contract_type}</td>
-                    <td className="px-3 py-3 text-gray-500">{r.bill_currency}</td>
+                    <td className="px-3 py-3 text-gray-500">{BASIS_LABELS[r.calc_basis] ?? r.calc_basis}</td>
+                    <td className="px-3 py-3 text-gray-500">{r.rate_currency}</td>
                     <td className="px-3 py-3 text-gray-600">{fmtNum(r.billable_days)}</td>
                     <td className="px-3 py-3 text-gray-600">{usd ? fmtNum(r.total_hours) : '—'}</td>
                     <td className="px-3 py-3 text-gray-600">{usd ? fmtUSD(r.hourly_rate_usd) : '—'}</td>
@@ -478,33 +497,81 @@ export default function Billing() {
                 <input required type="month" value={form.billing_month} onChange={setField('billing_month')} className={inputCls} />
               </div>
               <div>
-                <label className={labelCls}>Contract Type <span className="text-red-500">*</span></label>
-                <select value={form.contract_type} onChange={onContractTypeChange} className={inputCls}>
-                  <option value="hourly">Hourly (USD)</option>
-                  <option value="fixed_monthly">Fixed Monthly (INR)</option>
-                  <option value="monthly_prorated">Monthly Prorated (INR)</option>
+                <label className={labelCls}>Calculation Basis <span className="text-red-500">*</span></label>
+                <select value={form.calc_basis} onChange={setBasis} className={inputCls}>
+                  <option value="hourly">Hourly</option>
+                  <option value="fixed_hours">Fixed Hours</option>
+                  <option value="fixed_monthly">Fixed Monthly</option>
+                  <option value="prorated">Prorated</option>
                 </select>
               </div>
+              <div>
+                <label className={labelCls}>Rate Currency</label>
+                <div className="flex gap-2">
+                  {['USD', 'INR'].map(c => (
+                    <button
+                      key={c} type="button" onClick={() => setRateCurrency(c)}
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                        form.rate_currency === c
+                          ? 'bg-brand-600 text-white border-brand-600'
+                          : 'bg-white text-gray-600 border-gray-300 hover:border-brand-400'
+                      }`}
+                    >
+                      {c === 'USD' ? 'USD $' : 'INR ₹'}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-              {/* Contract-type-specific inputs */}
-              {showFee && (
+              {/* Rate field — single field reused per basis; label/symbol follows rate_currency */}
+              {isHourlyLike && (
                 <div>
-                  <label className={labelCls}>Monthly Fee (INR) <span className="text-red-500">*</span></label>
-                  <input required type="number" step="0.01" value={form.monthly_fee_inr} onChange={setField('monthly_fee_inr')} placeholder="150000" className={inputCls} />
+                  <label className={labelCls}>Rate per Hour ({rateSym}) <span className="text-red-500">*</span></label>
+                  <input required type="number" step="0.01" value={form.hourly_rate_usd} onChange={setField('hourly_rate_usd')} placeholder={rateIsUSD ? '35' : '2000'} className={inputCls} />
+                </div>
+              )}
+              {isFee && (
+                <div>
+                  <label className={labelCls}>Monthly Fee ({rateSym}) <span className="text-red-500">*</span></label>
+                  <input required type="number" step="0.01" value={form.monthly_fee_inr} onChange={setField('monthly_fee_inr')} placeholder={rateIsUSD ? '2000' : '150000'} className={inputCls} />
                 </div>
               )}
 
-              <div>
-                <label className={labelCls}>Total Days</label>
-                <input type="number" value={form.total_days} onChange={setField('total_days')} placeholder="30" className={inputCls} />
-              </div>
-              <div>
-                <label className={labelCls}>
-                  Non-billable Days
-                  {form.contract_type === 'fixed_monthly' && <span className="text-gray-400 font-normal"> (recorded only)</span>}
-                </label>
-                <input type="number" value={form.non_billable_days} onChange={setField('non_billable_days')} placeholder="0" className={inputCls} />
-              </div>
+              {isHourly && (
+                <div>
+                  <label className={labelCls}>Daily Hours</label>
+                  <input type="number" step="0.01" value={form.daily_hours} onChange={setField('daily_hours')} placeholder="8" className={inputCls} />
+                </div>
+              )}
+              {isFixedHours && (
+                <div>
+                  <label className={labelCls}>Fixed Hours <span className="text-red-500">*</span></label>
+                  <input required type="number" step="0.01" value={form.fixed_hours} onChange={setField('fixed_hours')} placeholder="160" className={inputCls} />
+                </div>
+              )}
+
+              {/* Days — hourly/prorated use them; fixed_hours & fixed_monthly record only */}
+              {(() => {
+                const recordedOnly = isFixedHours || form.calc_basis === 'fixed_monthly'
+                return (
+                  <>
+                    <div>
+                      <label className={labelCls}>
+                        Total Days
+                        {recordedOnly && <span className="text-gray-400 font-normal"> (recorded only)</span>}
+                      </label>
+                      <input type="number" value={form.total_days} onChange={setField('total_days')} placeholder="30" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>
+                        Non-billable Days
+                        {recordedOnly && <span className="text-gray-400 font-normal"> (recorded only)</span>}
+                      </label>
+                      <input type="number" value={form.non_billable_days} onChange={setField('non_billable_days')} placeholder="0" className={inputCls} />
+                    </div>
+                  </>
+                )
+              })()}
 
               {isProrated && (
                 <div>
@@ -513,21 +580,11 @@ export default function Billing() {
                 </div>
               )}
 
-              {isHourly && (
-                <>
-                  <div>
-                    <label className={labelCls}>Daily Hours</label>
-                    <input type="number" step="0.01" value={form.daily_hours} onChange={setField('daily_hours')} placeholder="8" className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Hourly Rate (USD)</label>
-                    <input type="number" step="0.01" value={form.hourly_rate_usd} onChange={setField('hourly_rate_usd')} placeholder="25" className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Conversion Rate (USD→INR)</label>
-                    <input type="number" step="0.0001" value={form.conversion_rate} onChange={setField('conversion_rate')} placeholder="83.50" className={inputCls} />
-                  </div>
-                </>
+              {rateIsUSD && (
+                <div>
+                  <label className={labelCls}>Conversion Rate (USD→INR) <span className="text-red-500">*</span></label>
+                  <input required type="number" step="0.0001" value={form.conversion_rate} onChange={setField('conversion_rate')} placeholder="83.50" className={inputCls} />
+                </div>
               )}
 
               {/* Tax dropdowns — always shown */}

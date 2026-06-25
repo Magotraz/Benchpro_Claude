@@ -1,10 +1,15 @@
-// Single source of truth for billing math (Phase 6.1).
+// Single source of truth for billing math (Phase 6.1, reworked in 6.4a).
 // Used by the billing form for live preview AND on save.
 //
-// Contract types:
-//   hourly           → USD-based; inr_total = total_usd * conversion_rate
-//   fixed_monthly    → flat INR fee, unaffected by non-billable days
-//   monthly_prorated → INR fee prorated by billable_days / working_days
+// Two INDEPENDENT levers (replace the old contract_type):
+//   calc_basis    ∈ hourly | fixed_hours | fixed_monthly | prorated  (how the base amount is derived)
+//   rate_currency ∈ USD | INR                                        (the unit the rate is in)
+//
+// Tax (gst_rate/tds_rate) and invoice currency are NOT derived from these.
+//
+// Rate field reuse (DB column names unchanged):
+//   hourly / fixed_hours  → rate lives in hourly_rate_usd (an INR number when rate_currency=INR)
+//   fixed_monthly / prorated → flat amount lives in monthly_fee_inr
 
 // Money is rounded to whole numbers; each component is rounded BEFORE it feeds
 // the next step so totals tie out exactly.
@@ -27,36 +32,57 @@ function num(v) {
  * @returns {object} computed fields + optional `error` validation message
  */
 export function calcBilling(input = {}) {
-  const contractType = input.contract_type
+  const calcBasis    = input.calc_basis
+  const rateCurrency = input.rate_currency === 'INR' ? 'INR' : 'USD'
+
   const totalDays    = num(input.total_days)
   const nonBillable  = num(input.non_billable_days)
-
   const billableDays = totalDays - nonBillable
+
+  // `units` is the per-unit count (hours) for hourly/fixed_hours; `base` is the
+  // amount in the rate's own currency before conversion.
+  let units = null   // hours, when applicable
+  let base  = 0      // amount in rate_currency
+  let error = ''
+
+  if (calcBasis === 'hourly') {
+    const dailyHours = num(input.daily_hours)
+    const rate       = num(input.hourly_rate_usd)
+    units = round2(billableDays * dailyHours)
+    base  = units * rate
+  } else if (calcBasis === 'fixed_hours') {
+    // Days-insensitive: total_days / non_billable_days never affect the amount.
+    const rate = num(input.hourly_rate_usd)
+    units = round2(num(input.fixed_hours))
+    base  = units * rate
+  } else if (calcBasis === 'fixed_monthly') {
+    base = num(input.monthly_fee_inr)
+  } else if (calcBasis === 'prorated') {
+    const monthlyFee  = num(input.monthly_fee_inr)
+    const workingDays = num(input.working_days)
+    if (!workingDays) {
+      error = 'Working days must be greater than 0 to prorate the monthly fee.'
+      base  = 0
+    } else {
+      base = (monthlyFee * billableDays) / workingDays
+    }
+  }
+
+  const isHourlyLike = calcBasis === 'hourly' || calcBasis === 'fixed_hours'
 
   let totalHours = null
   let totalUsd   = null
   let inrTotal   = 0
-  let error      = ''
 
-  if (contractType === 'hourly') {
-    const dailyHours = num(input.daily_hours)
-    const rateUsd    = num(input.hourly_rate_usd)
-    const conversion = num(input.conversion_rate)
-    totalHours = round2(billableDays * dailyHours)
-    totalUsd   = roundMoney(totalHours * rateUsd)
-    inrTotal   = roundMoney(totalUsd * conversion)
-  } else if (contractType === 'fixed_monthly') {
-    // Flat fee — days do NOT change it.
-    inrTotal = roundMoney(num(input.monthly_fee_inr))
-  } else if (contractType === 'monthly_prorated') {
-    const monthlyFee  = num(input.monthly_fee_inr)
-    const workingDays = num(input.working_days)
-    if (!workingDays) {
-      error    = 'Working days must be greater than 0 to prorate the monthly fee.'
-      inrTotal = 0
-    } else {
-      inrTotal = roundMoney((monthlyFee * billableDays) / workingDays)
-    }
+  if (rateCurrency === 'USD') {
+    totalHours = isHourlyLike ? units : null
+    totalUsd   = roundMoney(base)
+    inrTotal   = roundMoney(totalUsd * num(input.conversion_rate))
+  } else {
+    // INR rate: no USD figure, no conversion.
+    totalHours = isHourlyLike ? units : null
+    totalUsd   = null
+    inrTotal   = roundMoney(base)
   }
 
   const gstRate = num(input.gst_rate)
