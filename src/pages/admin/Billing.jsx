@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Receipt, Pencil, CopyPlus, Trash2, FileDown, ListChecks, Building2, Wallet } from 'lucide-react'
+import { Plus, Receipt, Pencil, CopyPlus, Trash2, FileDown, ListChecks, Building2, Wallet, BarChart3, Download } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { calcBilling } from '../../lib/billingCalc'
@@ -8,6 +8,7 @@ import { expectedFor, derivePaymentStatus, PAYMENT_BADGE, fmtMoney } from '../..
 import Modal from '../../components/Modal'
 import BillingClients from './BillingClients'
 import BillingPayments from './BillingPayments'
+import BillingSummaries from './BillingSummaries'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -69,6 +70,42 @@ const fmtUSD = v => (v === null || v === undefined) ? '—'
   : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v)
 const fmtNum = v => (v === null || v === undefined || v === '') ? '—' : String(v)
 const fmtDate = v => v ? new Date(v).toLocaleDateString('en-IN') : '—'
+
+// ── CSV export (import-friendly: YYYY-MM month, YYYY-MM-DD dates, plain whole money) ──
+const CSV_COLUMNS = [
+  'contractor_name', 'client_name', 'billing_month', 'calc_basis', 'rate_currency',
+  'total_days', 'non_billable_days', 'working_days', 'fixed_hours', 'daily_hours',
+  'hourly_rate_usd', 'conversion_rate', 'monthly_fee_inr', 'billable_days', 'total_hours',
+  'total_usd', 'inr_total', 'gst_rate', 'gst_amount', 'tds_rate', 'tds_amount',
+  'total_invoice_value', 'bank_transfer', 'invoice_no', 'invoice_date', 'gstr1_filed_date',
+  'gstr1_closed', 'gstr3b_filed_date', 'gstr3b_closed', 'payment_status', 'amount_received',
+  'received_date', 'notes',
+]
+const MONEY_COLS = new Set(['total_usd', 'inr_total', 'gst_amount', 'tds_amount', 'total_invoice_value', 'bank_transfer', 'amount_received'])
+const DATE_COLS  = new Set(['invoice_date', 'gstr1_filed_date', 'gstr3b_filed_date', 'received_date'])
+
+function csvCell(row, col) {
+  const v = row[col]
+  if (v === null || v === undefined || v === '') return ''
+  if (col === 'billing_month') return String(v).slice(0, 7)          // YYYY-MM
+  if (DATE_COLS.has(col))      return String(v).slice(0, 10)         // YYYY-MM-DD
+  if (MONEY_COLS.has(col))     return String(Math.round(Number(v)))  // plain whole number
+  if (typeof v === 'boolean')  return v ? 'true' : 'false'
+  return String(v)
+}
+
+function exportBillingCSV(rows) {
+  const header = CSV_COLUMNS.join(',')
+  const body = rows.map(r => CSV_COLUMNS.map(c => `"${csvCell(r, c).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const csv = `${header}\n${body}`
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `billing_records_${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 export default function Billing() {
   const { user } = useAuth()
@@ -349,6 +386,12 @@ export default function Billing() {
             <Wallet size={15} /> Payments
           </button>
           <button
+            onClick={() => setView('summaries')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors ${view === 'summaries' ? 'bg-white text-brand-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            <BarChart3 size={15} /> Summaries
+          </button>
+          <button
             onClick={() => setView('clients')}
             className={`flex items-center gap-2 px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors ${view === 'clients' ? 'bg-white text-brand-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
@@ -356,9 +399,16 @@ export default function Billing() {
           </button>
         </div>
         {view === 'records' && (
-          <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg transition-colors">
-            <Plus size={16} /> New Record
-          </button>
+          <div className="flex items-center gap-3">
+            {records.length > 0 && (
+              <button onClick={() => exportBillingCSV(visible)} className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                <Download size={14} /> Export CSV
+              </button>
+            )}
+            <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg transition-colors">
+              <Plus size={16} /> New Record
+            </button>
+          </div>
         )}
       </div>
 
@@ -367,6 +417,8 @@ export default function Billing() {
       {view === 'clients' && <BillingClients clients={clients} onChanged={loadClients} />}
 
       {view === 'payments' && <BillingPayments records={records} clients={clients} />}
+
+      {view === 'summaries' && <BillingSummaries records={records} />}
 
       {/* Filters */}
       {view === 'records' && (
