@@ -1,10 +1,24 @@
-import * as pdfjsLib from 'pdfjs-dist'
-import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import mammoth from 'mammoth'
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc
-
 // ─── Text extraction ──────────────────────────────────────────────────────────
+//
+// pdfjs-dist and mammoth are heavy (~1.4MB) and only needed when a user actually
+// parses an uploaded CV. They are lazy-loaded via dynamic import inside the
+// extraction helpers below so they stay OUT of the main bundle — everyone who
+// never uploads a CV (public job board, candidate portal, etc.) skips the cost.
+
+// Memoize the pdfjs module + one-time worker setup so the chunk is fetched and
+// the workerSrc configured only once per session.
+let pdfjsPromise = null
+function loadPdfjs() {
+  if (!pdfjsPromise) {
+    pdfjsPromise = (async () => {
+      const pdfjsLib = await import('pdfjs-dist')
+      const workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc
+      return pdfjsLib
+    })()
+  }
+  return pdfjsPromise
+}
 
 export async function extractTextFromFile(file) {
   if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
@@ -14,6 +28,7 @@ export async function extractTextFromFile(file) {
 }
 
 async function extractFromPDF(file) {
+  const pdfjsLib = await loadPdfjs()
   const arrayBuffer = await file.arrayBuffer()
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
   const pages = []
@@ -26,6 +41,7 @@ async function extractFromPDF(file) {
 }
 
 async function extractFromDocx(file) {
+  const { default: mammoth } = await import('mammoth')
   const arrayBuffer = await file.arrayBuffer()
   const result = await mammoth.extractRawText({ arrayBuffer })
   return result.value
