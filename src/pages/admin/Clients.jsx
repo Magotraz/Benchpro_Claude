@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle, XCircle, Clock, Copy, Check, RefreshCw } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, Copy, Check, RefreshCw, Building2, ChevronDown } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 
@@ -10,6 +10,7 @@ export default function Clients() {
   const [processing, setProcessing] = useState(null)
   const [inviteLinks, setInviteLinks] = useState({})
   const [copiedId, setCopiedId]   = useState(null)
+  const [showRejected, setShowRejected] = useState(false)
   const [error, setError]         = useState('')
 
   useEffect(() => { load() }, [])
@@ -52,18 +53,19 @@ export default function Clients() {
 
     const link = `${window.location.origin}/accept-invite?token=${token}`
     setInviteLinks(prev => ({ ...prev, [req.id]: link }))
-    setRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: 'approved' } : r))
+    setRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: 'approved', reviewed_at: now } : r))
     setProcessing(null)
   }
 
   async function reject(req) {
     setProcessing(req.id)
+    const now = new Date().toISOString()
     const { error: err } = await supabase
       .from('demo_requests')
-      .update({ status: 'rejected', reviewed_at: new Date().toISOString(), reviewed_by: user.id })
+      .update({ status: 'rejected', reviewed_at: now, reviewed_by: user.id })
       .eq('id', req.id)
     if (err) setError(err.message)
-    else setRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: 'rejected' } : r))
+    else setRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: 'rejected', reviewed_at: now } : r))
     setProcessing(null)
   }
 
@@ -73,8 +75,9 @@ export default function Clients() {
     setTimeout(() => setCopiedId(null), 2500)
   }
 
-  const pending  = requests.filter(r => !r.status || r.status === 'pending')
-  const reviewed = requests.filter(r => r.status && r.status !== 'pending')
+  const pending   = requests.filter(r => !r.status || r.status === 'new' || r.status === 'pending')
+  const onboarded = requests.filter(r => r.status === 'approved')
+  const rejected  = requests.filter(r => r.status === 'rejected')
 
   if (loading) return <Spinner />
 
@@ -84,12 +87,13 @@ export default function Clients() {
         <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
       )}
 
-      {/* Pending requests */}
+      {/* ── Section A: Pending Requests ── */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Clock size={15} className="text-amber-500" />
-            <h2 className="font-semibold text-gray-800">Pending Demo Requests ({pending.length})</h2>
+            <h2 className="font-semibold text-gray-800">Pending Requests ({pending.length})</h2>
+            {pending.length > 0 && <GlowDot />}
           </div>
           <button onClick={load} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
             <RefreshCw size={15} />
@@ -106,6 +110,7 @@ export default function Clients() {
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <p className="font-medium text-gray-800">{req.contact_name}</p>
+                      {req.designation && <span className="text-xs text-gray-500">· {req.designation}</span>}
                       <span className="text-xs text-gray-400">at</span>
                       <p className="font-semibold text-brand-700">{req.company_name}</p>
                       {req.company_size && (
@@ -115,9 +120,8 @@ export default function Clients() {
                       )}
                     </div>
                     <p className="text-sm text-gray-500 mt-0.5">{req.email}</p>
-                    {req.phone && <p className="text-xs text-gray-400 mt-0.5">{req.phone}</p>}
-                    {req.message && (
-                      <p className="text-sm text-gray-600 mt-1.5 italic line-clamp-2">"{req.message}"</p>
+                    {(req.hiring_needs || req.message) && (
+                      <p className="text-sm text-gray-600 mt-1.5 italic line-clamp-2">"{req.hiring_needs || req.message}"</p>
                     )}
                     <p className="text-xs text-gray-400 mt-1.5">
                       Submitted {req.created_at ? new Date(req.created_at).toLocaleString() : ''}
@@ -162,52 +166,102 @@ export default function Clients() {
         )}
       </div>
 
-      {/* Reviewed requests */}
-      {reviewed.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-800">Reviewed Requests ({reviewed.length})</h2>
-          </div>
+      {/* ── Section B: Onboarded Clients ── */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+          <Building2 size={15} className="text-emerald-500" />
+          <h2 className="font-semibold text-gray-800">Onboarded Clients ({onboarded.length})</h2>
+        </div>
+
+        {onboarded.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-8">No onboarded clients yet.</p>
+        ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100 text-left">
-                  <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Contact</th>
                   <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Company</th>
+                  <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Contact</th>
                   <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Email</th>
-                  <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Decision</th>
-                  <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Reviewed</th>
+                  <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Size</th>
+                  <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Approved</th>
+                  <th className="px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {reviewed.map(req => (
+                {onboarded.map(req => (
                   <tr key={req.id} className="hover:bg-gray-50">
-                    <td className="px-5 py-3.5 font-medium text-gray-800">{req.contact_name}</td>
-                    <td className="px-5 py-3.5 text-gray-600">{req.company_name}</td>
-                    <td className="px-5 py-3.5 text-gray-500">{req.email}</td>
-                    <td className="px-5 py-3.5">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                        req.status === 'approved'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-red-100 text-red-600'
-                      }`}>
-                        {req.status === 'approved'
-                          ? <CheckCircle size={11} />
-                          : <XCircle size={11} />}
-                        {req.status === 'approved' ? 'Approved' : 'Rejected'}
-                      </span>
+                    <td className="px-5 py-3.5 font-semibold text-gray-800">{req.company_name}</td>
+                    <td className="px-5 py-3.5 text-gray-600">
+                      {req.contact_name}
+                      {req.designation && <span className="text-gray-400"> · {req.designation}</span>}
                     </td>
+                    <td className="px-5 py-3.5 text-gray-500">{req.email}</td>
+                    <td className="px-5 py-3.5 text-gray-500">{req.company_size || '—'}</td>
                     <td className="px-5 py-3.5 text-gray-500 whitespace-nowrap">
                       {req.reviewed_at ? new Date(req.reviewed_at).toLocaleDateString() : '—'}
+                    </td>
+                    <td className="px-5 py-3.5 text-right">
+                      {inviteLinks[req.id] && (
+                        <button
+                          onClick={() => copyLink(req.id, inviteLinks[req.id])}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium rounded-lg transition-colors"
+                        >
+                          {copiedId === req.id ? <Check size={12} /> : <Copy size={12} />}
+                          {copiedId === req.id ? 'Copied!' : 'Invite link'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        )}
+      </div>
+
+      {/* ── Rejected (collapsed) ── */}
+      {rejected.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <button
+            onClick={() => setShowRejected(s => !s)}
+            className="w-full px-5 py-4 flex items-center justify-between text-left"
+          >
+            <div className="flex items-center gap-2">
+              <XCircle size={15} className="text-gray-400" />
+              <h2 className="font-semibold text-gray-700">Rejected Requests ({rejected.length})</h2>
+            </div>
+            <ChevronDown size={16} className={`text-gray-400 transition-transform ${showRejected ? 'rotate-180' : ''}`} />
+          </button>
+
+          {showRejected && (
+            <div className="divide-y divide-gray-100 border-t border-gray-100">
+              {rejected.map(req => (
+                <div key={req.id} className="px-5 py-3 flex flex-wrap items-center gap-x-2 text-sm">
+                  <span className="font-medium text-gray-700">{req.contact_name}</span>
+                  <span className="text-gray-400">at</span>
+                  <span className="text-gray-600">{req.company_name}</span>
+                  <span className="text-gray-400">·</span>
+                  <span className="text-gray-500">{req.email}</span>
+                  <span className="ml-auto text-xs text-gray-400 whitespace-nowrap">
+                    {req.reviewed_at ? new Date(req.reviewed_at).toLocaleDateString() : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
+  )
+}
+
+function GlowDot() {
+  return (
+    <span className="relative flex h-2.5 w-2.5">
+      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
+    </span>
   )
 }
 

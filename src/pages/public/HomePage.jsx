@@ -40,14 +40,6 @@ const HOW_STEPS = [
   },
 ]
 
-const TIMELINES = ['Immediate', 'Within 2 weeks', 'Within a month', 'Planning ahead']
-const BUDGETS   = ['Under $20/hr', '$20–30/hr', '$30–50/hr', '$50+/hr', 'Discuss on call']
-
-const FORM_EMPTY = {
-  name: '', company: '', email: '', phone: '', role: '',
-  skills: '', timeline: TIMELINES[0], budget: BUDGETS[0], context: '',
-}
-
 function formatLPA(val) {
   if (!val) return null
   const l = val / 100000
@@ -61,10 +53,6 @@ export default function HomePage() {
   const navigate = useNavigate()
   const [jobs, setJobs]             = useState([])
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [form, setForm]             = useState(FORM_EMPTY)
-  const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted]   = useState(false)
-  const [formError, setFormError]   = useState('')
 
   useEffect(() => {
     if (!loading && user) {
@@ -89,34 +77,6 @@ export default function HomePage() {
     setTimeout(() => {
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 50)
-  }
-
-  function fld(key) {
-    return e => setForm(f => ({ ...f, [key]: e.target.value }))
-  }
-
-  async function handleFormSubmit(e) {
-    e.preventDefault()
-    setFormError('')
-    setSubmitting(true)
-    const message = [
-      `Position: ${form.role}`,
-      form.skills  ? `Skills: ${form.skills}` : null,
-      `Timeline: ${form.timeline}`,
-      `Budget: ${form.budget}`,
-      form.context ? `Additional context: ${form.context}` : null,
-    ].filter(Boolean).join('\n')
-
-    const { error } = await supabase.from('demo_requests').insert({
-      contact_name: form.name,
-      company_name: form.company,
-      email:        form.email,
-      phone:        form.phone || null,
-      message,
-    })
-    if (error) { setFormError(error.message); setSubmitting(false); return }
-    setSubmitted(true)
-    setSubmitting(false)
   }
 
   if (loading) return null
@@ -151,11 +111,11 @@ export default function HomePage() {
               className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
               Client Login
             </Link>
-            <button
-              onClick={() => scrollTo('requirement-form')}
+            <Link
+              to="/request-demo"
               className="px-5 py-2 text-sm font-semibold text-white bg-gray-900 rounded-full hover:bg-gray-700 transition-colors">
-              Post a Requirement
-            </button>
+              Request access
+            </Link>
           </div>
 
           {/* Mobile hamburger */}
@@ -185,10 +145,10 @@ export default function HomePage() {
                 className="block text-center px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg">
                 Client Login
               </Link>
-              <button onClick={() => scrollTo('requirement-form')}
-                className="px-4 py-2 text-sm font-semibold text-white bg-gray-900 rounded-full">
-                Post a Requirement
-              </button>
+              <Link to="/request-demo" onClick={() => setMobileOpen(false)}
+                className="block text-center px-4 py-2 text-sm font-semibold text-white bg-gray-900 rounded-full">
+                Request access
+              </Link>
             </div>
           </div>
         )}
@@ -205,12 +165,12 @@ export default function HomePage() {
             Skip the shortlisting. We've already done it.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-            <button
-              onClick={() => scrollTo('requirement-form')}
+            <Link
+              to="/request-demo"
               className="px-8 py-4 bg-gray-900 text-white text-sm font-semibold rounded-full hover:bg-gray-700 transition-colors"
             >
               Post a requirement
-            </button>
+            </Link>
             <button
               onClick={() => scrollTo('how-it-works')}
               className="px-8 py-4 bg-white text-gray-900 text-sm font-semibold rounded-full border border-gray-900 hover:bg-gray-50 transition-colors"
@@ -362,97 +322,6 @@ export default function HomePage() {
               {jobs.map(job => <JobCard key={job.id} job={job} />)}
             </div>
           )}
-        </div>
-      </section>
-
-      {/* ── POST A REQUIREMENT ──────────────────────────────────── */}
-      <section id="requirement-form" className="bg-white py-20 px-6">
-        <div className="max-w-2xl mx-auto">
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold text-gray-900">Post a requirement</h2>
-            <p className="mt-2 text-gray-500">Tell us what you need — we'll get back to you within 24 hours</p>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
-            {submitted ? (
-              <div className="text-center py-8">
-                <CheckCircle size={48} className="mx-auto text-green-500 mb-4" />
-                <h3 className="text-xl font-bold text-gray-900">Thanks, {form.name.split(' ')[0]}!</h3>
-                <p className="text-gray-500 mt-2">Our team will reach out within 24 hours.</p>
-              </div>
-            ) : (
-              <form onSubmit={handleFormSubmit} className="space-y-4">
-                {formError && (
-                  <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{formError}</div>
-                )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Full name <span className="text-red-500">*</span></label>
-                    <input required value={form.name} onChange={fld('name')} placeholder="Jane Smith"
-                      className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Company name <span className="text-red-500">*</span></label>
-                    <input required value={form.company} onChange={fld('company')} placeholder="Acme Corp"
-                      className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Work email <span className="text-red-500">*</span></label>
-                    <input required type="email" value={form.email} onChange={fld('email')} placeholder="jane@acme.com"
-                      className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone number</label>
-                    <input type="tel" value={form.phone} onChange={fld('phone')} placeholder="+44 7700 900000"
-                      className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Role / Position needed <span className="text-red-500">*</span></label>
-                  <input required value={form.role} onChange={fld('role')} placeholder="e.g. Oracle Cloud Finance Consultant"
-                    className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Key skills required</label>
-                  <textarea rows={2} value={form.skills} onChange={fld('skills')} placeholder="e.g. Oracle Fusion, HCM, Payroll, OIC…"
-                    className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white resize-none" />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Timeline</label>
-                    <select value={form.timeline} onChange={fld('timeline')}
-                      className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                      {TIMELINES.map(t => <option key={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Budget range</label>
-                    <select value={form.budget} onChange={fld('budget')}
-                      className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                      {BUDGETS.map(b => <option key={b}>{b}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Additional context <span className="text-gray-400 font-normal">(optional)</span></label>
-                  <textarea rows={3} value={form.context} onChange={fld('context')} placeholder="Project details, start date, remote/onsite preference…"
-                    className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white resize-none" />
-                </div>
-
-                <button type="submit" disabled={submitting}
-                  className="w-full py-3 px-4 bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-60 mt-2">
-                  {submitting
-                    ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Submitting…</span>
-                    : 'Submit requirement'
-                  }
-                </button>
-              </form>
-            )}
-          </div>
         </div>
       </section>
 

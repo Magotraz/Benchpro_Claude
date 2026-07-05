@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Outlet, NavLink, useLocation, Navigate } from 'react-router-dom'
 import { LayoutDashboard, Users, Globe, Mail, BarChart2, ShieldCheck, Shield, ClipboardList, Receipt } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
 
 const tabs = [
   { to: '/admin/overview',     label: 'Overview',     icon: LayoutDashboard },
@@ -14,6 +16,19 @@ const tabs = [
 
 export default function AdminPanel() {
   const location = useLocation()
+  const [pendingClients, setPendingClients] = useState(0)
+
+  // Refetch whenever the admin route changes so the glow clears once
+  // requests are reviewed from the Clients tab.
+  useEffect(() => {
+    supabase
+      .from('demo_requests')
+      .select('status')
+      .then(({ data }) => {
+        const n = (data ?? []).filter(r => !r.status || r.status === 'new' || r.status === 'pending').length
+        setPendingClients(n)
+      })
+  }, [location.pathname])
 
   if (location.pathname === '/admin' || location.pathname === '/admin/') {
     return <Navigate to="/admin/overview" replace />
@@ -46,6 +61,12 @@ export default function AdminPanel() {
           >
             <Icon size={15} />
             {label}
+            {to === '/admin/clients' && pendingClients > 0 && (
+              <span className="relative flex h-2 w-2 ml-0.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+              </span>
+            )}
           </NavLink>
         ))}
       </div>

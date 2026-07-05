@@ -11,7 +11,6 @@ import JobDetail   from './pages/public/JobDetail'
 
 // Auth pages
 import Login              from './pages/auth/Login'
-import SignupCandidate    from './pages/auth/SignupCandidate'
 import RegisterCandidate  from './pages/auth/RegisterCandidate'
 import AcceptInvite       from './pages/auth/AcceptInvite'
 import DemoRequest        from './pages/auth/DemoRequest'
@@ -95,7 +94,6 @@ export default function App() {
 
         {/* ── Public auth routes ────────────────────────────────── */}
         <Route path="/login"            element={<Login />} />
-        <Route path="/signup"           element={<SignupCandidate />} />
         <Route path="/register"         element={<RegisterCandidate />} />
         <Route path="/accept-invite"    element={<AcceptInvite />} />
         <Route path="/request-demo"     element={<DemoRequest />} />
