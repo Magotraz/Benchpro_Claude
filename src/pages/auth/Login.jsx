@@ -74,7 +74,7 @@ export default function Login() {
           {/* ── Value prop (left on desktop, below the form on mobile) ── */}
           <div className="order-2 md:order-1 flex flex-col bg-gradient-to-br from-brand-800 via-brand-900 to-indigo-950 text-white p-8 sm:p-10">
             <Link to="/" className="text-lg font-bold tracking-tight text-white">
-              BenchPro<span className="text-brand-300">:</span>
+              BenchPro
             </Link>
 
             {/* Audience toggle — controls this panel only */}
@@ -89,7 +89,7 @@ export default function Login() {
                   onClick={() => setMode(key)}
                   className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-colors ${
                     mode === key
-                      ? 'bg-white text-brand-800 shadow-sm'
+                      ? 'bg-white text-brand-700 shadow-sm'
                       : 'text-white/70 hover:text-white'
                   }`}
                 >

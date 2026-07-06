@@ -46,7 +46,7 @@ export default function Clients() {
       email:      req.email,
       role:       'client',
       expires_at: expiresAt,
-      created_by: user.id,
+      invited_by: user.id,
     })
 
     if (inviteErr) { setError(inviteErr.message); setProcessing(null); return }
@@ -120,6 +120,13 @@ export default function Clients() {
                       )}
                     </div>
                     <p className="text-sm text-gray-500 mt-0.5">{req.email}</p>
+                    {(req.phone || req.country) && (
+                      <p className="text-sm text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-2">
+                        {req.phone && <span>{[req.dial_code, req.phone].filter(Boolean).join(' ')}</span>}
+                        {req.phone && req.country && <span className="text-gray-300">·</span>}
+                        {req.country && <span>{req.country}</span>}
+                      </p>
+                    )}
                     {(req.hiring_needs || req.message) && (
                       <p className="text-sm text-gray-600 mt-1.5 italic line-clamp-2">"{req.hiring_needs || req.message}"</p>
                     )}

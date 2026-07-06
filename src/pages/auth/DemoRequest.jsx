@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { isBenchProEmail, isFreeEmail } from '../../lib/auth'
+import { COUNTRIES } from '../../lib/countries'
 import { CheckCircle, Check, Send } from 'lucide-react'
 
 const COMPANY_SIZES = ['1–10', '11–50', '51–200', '201–500', '500+']
@@ -16,6 +17,7 @@ export default function DemoRequest() {
   const [form, setForm] = useState({
     company_name: '', contact_name: '', designation: '',
     email: '', company_size: '', hiring_needs: '',
+    country_iso: '', dial_code: '', phone: '',
   })
   const [error, setError]     = useState('')
   const [loading, setLoading] = useState(false)
@@ -23,6 +25,12 @@ export default function DemoRequest() {
 
   function set(field) {
     return (e) => setForm((f) => ({ ...f, [field]: e.target.value }))
+  }
+
+  function selectCountry(e) {
+    const iso = e.target.value
+    const c = COUNTRIES.find((x) => x.iso2 === iso)
+    setForm((f) => ({ ...f, country_iso: iso, dial_code: c ? c.dial : f.dial_code }))
   }
 
   async function handleSubmit(e) {
@@ -38,6 +46,21 @@ export default function DemoRequest() {
       return
     }
 
+    const country = COUNTRIES.find((x) => x.iso2 === form.country_iso)
+    if (!country) {
+      setError('Please select your country.')
+      return
+    }
+    const digits = form.phone.replace(/\D/g, '')
+    if (!/^\d{6,15}$/.test(digits)) {
+      setError('Please enter a valid mobile number (digits only, 6–15 digits).')
+      return
+    }
+    if (!/^\+\d{1,4}$/.test(form.dial_code.trim())) {
+      setError('Please enter a valid dial code (e.g. +91).')
+      return
+    }
+
     setLoading(true)
     const { error: dbError } = await supabase.from('demo_requests').insert({
       company_name: form.company_name,
@@ -46,6 +69,9 @@ export default function DemoRequest() {
       email:        form.email,
       company_size: form.company_size || null,
       hiring_needs: form.hiring_needs || null,
+      country:      country.name,
+      dial_code:    form.dial_code.trim(),
+      phone:        digits,
       status:       'pending',
     })
 
@@ -140,6 +166,32 @@ export default function DemoRequest() {
               <div>
                 <label className={labelCls}>Work email <span className="text-red-500">*</span></label>
                 <input type="email" required value={form.email} onChange={set('email')} placeholder="jane@yourcompany.com" className={inputCls} />
+              </div>
+
+              <div>
+                <label className={labelCls}>Country <span className="text-red-500">*</span></label>
+                <select required value={form.country_iso} onChange={selectCountry} className={inputCls}>
+                  <option value="">Select country…</option>
+                  {COUNTRIES.map((c) => (
+                    <option key={c.iso2} value={c.iso2}>{c.name} ({c.dial})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={labelCls}>Mobile phone <span className="text-red-500">*</span></label>
+                <div className="flex gap-2">
+                  <input
+                    type="text" required value={form.dial_code} onChange={set('dial_code')}
+                    placeholder="+91" aria-label="Dial code"
+                    className={`${inputCls} w-20 shrink-0 text-center`}
+                  />
+                  <input
+                    type="tel" required inputMode="numeric" value={form.phone} onChange={set('phone')}
+                    placeholder="98765 43210" aria-label="Mobile number"
+                    className={`${inputCls} flex-1`}
+                  />
+                </div>
               </div>
 
               <div>
