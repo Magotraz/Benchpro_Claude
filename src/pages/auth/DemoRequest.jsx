@@ -181,7 +181,7 @@ export default function DemoRequest() {
                     aria-hidden="true"
                     className="shrink-0 min-w-[3.5rem] px-3 py-2.5 text-sm text-gray-600 bg-gray-100 border border-gray-200 rounded-lg text-center select-none"
                   >
-                    {form.dial_code || '+—'}
+                    {form.dial_code || <span className="text-gray-400">+</span>}
                   </span>
                   <input
                     type="tel" required inputMode="numeric" value={form.phone} onChange={set('phone')}
