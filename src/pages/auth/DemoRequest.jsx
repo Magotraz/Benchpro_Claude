@@ -56,10 +56,6 @@ export default function DemoRequest() {
       setError('Please enter a valid mobile number (digits only, 6–15 digits).')
       return
     }
-    if (!/^\+\d{1,4}$/.test(form.dial_code.trim())) {
-      setError('Please enter a valid dial code (e.g. +91).')
-      return
-    }
 
     setLoading(true)
     const { error: dbError } = await supabase.from('demo_requests').insert({
@@ -70,7 +66,7 @@ export default function DemoRequest() {
       company_size: form.company_size || null,
       hiring_needs: form.hiring_needs || null,
       country:      country.name,
-      dial_code:    form.dial_code.trim(),
+      dial_code:    country.dial,
       phone:        digits,
       status:       'pending',
     })
@@ -181,11 +177,12 @@ export default function DemoRequest() {
               <div>
                 <label className={labelCls}>Mobile phone <span className="text-red-500">*</span></label>
                 <div className="flex gap-2">
-                  <input
-                    type="text" required value={form.dial_code} onChange={set('dial_code')}
-                    placeholder="+91" aria-label="Dial code"
-                    className={`${inputCls} w-20 shrink-0 text-center`}
-                  />
+                  <span
+                    aria-hidden="true"
+                    className="shrink-0 min-w-[3.5rem] px-3 py-2.5 text-sm text-gray-600 bg-gray-100 border border-gray-200 rounded-lg text-center select-none"
+                  >
+                    {form.dial_code || '+—'}
+                  </span>
                   <input
                     type="tel" required inputMode="numeric" value={form.phone} onChange={set('phone')}
                     placeholder="98765 43210" aria-label="Mobile number"
