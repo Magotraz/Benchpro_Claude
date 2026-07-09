@@ -238,7 +238,7 @@ export default function ClientSubmissions() {
       supabase.from('submissions')
         .select('*, candidates(id, full_name, current_title, current_company, skills, experience_years, location), jobs(id, title)')
         .order('updated_at', { ascending: false }),
-      supabase.from('client_feedback').select('submission_id, verdict, notes').eq('client_id', user.id),
+      supabase.from('client_feedback').select('submission_id, verdict, notes'),
     ])
     setSubmissions(submRes.data ?? [])
     const fbMap = {}

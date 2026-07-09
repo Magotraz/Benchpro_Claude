@@ -50,7 +50,12 @@ export default function AcceptInvite() {
       email:    invite.email,
       password: form.password,
       options: {
-        data: { role: invite.role, full_name: form.full_name },
+        data: {
+          role:         invite.role,
+          full_name:    form.full_name,
+          company_id:   invite.company_id,
+          company_role: invite.company_role,
+        },
       },
     })
 

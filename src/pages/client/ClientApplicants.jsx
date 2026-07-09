@@ -34,11 +34,10 @@ export default function ClientApplicants() {
     if (!user) return
     setLoading(true)
 
-    // Step 1: get this client's job IDs
+    // Step 1: get the company's job IDs (company RLS scopes this client's rows)
     const { data: clientJobs } = await supabase
       .from('jobs')
       .select('id, title, employment_type, location')
-      .eq('client_id', user.id)
 
     const jobMap = {}
     for (const j of clientJobs ?? []) jobMap[j.id] = j

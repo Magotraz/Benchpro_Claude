@@ -31,25 +31,71 @@ export default function Clients() {
     setProcessing(req.id)
     const now = new Date().toISOString()
 
+    // Derive the company domain from the requester's email.
+    const domain = (req.email.split('@')[1] || '').trim().toLowerCase()
+    if (!domain) {
+      setError('Could not derive a company domain from the email address.')
+      setProcessing(null)
+      return
+    }
+
+    // 1. Find or create the company by domain. First person from a domain
+    //    becomes the company admin (Account Owner); everyone after is a member.
+    let companyId   = null
+    let companyRole = 'company_member'
+
+    const { data: existing, error: findErr } = await supabase
+      .from('companies').select('id').eq('domain', domain).maybeSingle()
+    if (findErr) { setError(findErr.message); setProcessing(null); return }
+
+    if (existing) {
+      companyId   = existing.id
+      companyRole = 'company_member'
+    } else {
+      const { data: created, error: coErr } = await supabase
+        .from('companies')
+        .insert({ name: req.company_name, domain, created_by: user.id })
+        .select('id')
+        .single()
+
+      if (coErr) {
+        // Likely a UNIQUE(domain) race — someone created it between our
+        // select and insert. Re-select and proceed as a member.
+        const { data: raced } = await supabase
+          .from('companies').select('id').eq('domain', domain).maybeSingle()
+        if (!raced) { setError(coErr.message); setProcessing(null); return }
+        companyId   = raced.id
+        companyRole = 'company_member'
+      } else {
+        companyId   = created.id
+        companyRole = 'company_admin'
+      }
+    }
+
+    // 2. Create the client invite, carrying company_id + company_role.
+    const token     = crypto.randomUUID()
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+
+    const { error: inviteErr } = await supabase.from('invites').insert({
+      token,
+      email:        req.email,
+      role:         'client',
+      expires_at:   expiresAt,
+      invited_by:   user.id,
+      company_id:   companyId,
+      company_role: companyRole,
+    })
+
+    if (inviteErr) { setError(inviteErr.message); setProcessing(null); return }
+
+    // 3. Mark the demo request approved last, so a failure above never leaves
+    //    the request half-approved (status flips only after company + invite).
     const { error: updateErr } = await supabase
       .from('demo_requests')
       .update({ status: 'approved', reviewed_at: now, reviewed_by: user.id })
       .eq('id', req.id)
 
     if (updateErr) { setError(updateErr.message); setProcessing(null); return }
-
-    const token     = crypto.randomUUID()
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-
-    const { error: inviteErr } = await supabase.from('invites').insert({
-      token,
-      email:      req.email,
-      role:       'client',
-      expires_at: expiresAt,
-      invited_by: user.id,
-    })
-
-    if (inviteErr) { setError(inviteErr.message); setProcessing(null); return }
 
     const link = `${window.location.origin}/accept-invite?token=${token}`
     setInviteLinks(prev => ({ ...prev, [req.id]: link }))

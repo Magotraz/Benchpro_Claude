@@ -160,24 +160,20 @@ export default function ClientDashboard() {
     const [jobsRes, subsRes, quotRes, fbRes] = await Promise.all([
       supabase.from('jobs')
         .select('id, title, status')
-        .eq('client_id', user.id)
         .eq('status', 'open')
         .order('created_at', { ascending: false }),
 
       supabase.from('submissions')
         .select('id, stage, submitted_by, updated_at, job_id, candidate_id, candidates(id, full_name, current_title, skills), jobs!inner(id, title, client_id)')
-        .eq('jobs.client_id', user.id)
         .order('updated_at', { ascending: false }),
 
       supabase.from('quotations')
         .select('id, status, fee_amount, currency, quote_number, created_by, jobs(title)')
-        .eq('client_id', user.id)
         .eq('status', 'sent')
         .order('created_at', { ascending: false }),
 
       supabase.from('client_feedback')
         .select('submission_id, verdict, notes, updated_at, submissions(candidates(full_name), jobs(title))')
-        .eq('client_id', user.id)
         .order('updated_at', { ascending: false })
         .limit(20),
     ])
@@ -277,7 +273,7 @@ export default function ClientDashboard() {
             </div>
             {awaiting.length > 6 && (
               <button
-                onClick={() => navigate('/client/submissions')}
+                onClick={() => navigate('/submissions')}
                 className="text-xs text-brand-600 hover:underline flex items-center gap-1"
               >
                 View all {awaiting.length} <ChevronRight size={12} />
@@ -305,7 +301,7 @@ export default function ClientDashboard() {
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-gray-800">Your Open Roles</h2>
             <button
-              onClick={() => navigate('/client/submissions')}
+              onClick={() => navigate('/submissions')}
               className="text-xs text-brand-600 hover:underline flex items-center gap-1"
             >
               All candidates <ChevronRight size={12} />
@@ -327,7 +323,7 @@ export default function ClientDashboard() {
                   <div
                     key={job.id}
                     className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm transition-shadow cursor-pointer"
-                    onClick={() => navigate(`/client/submissions?job=${job.id}`)}
+                    onClick={() => navigate(`/submissions?job=${job.id}`)}
                   >
                     <div className="flex items-start justify-between gap-2 mb-3">
                       <div>
@@ -433,7 +429,7 @@ export default function ClientDashboard() {
               </ul>
               <div className="px-5 py-3 border-t border-gray-100">
                 <button
-                  onClick={() => navigate('/client/submissions')}
+                  onClick={() => navigate('/submissions')}
                   className="text-xs text-brand-600 hover:underline flex items-center gap-1"
                 >
                   View all candidates <ChevronRight size={12} />
